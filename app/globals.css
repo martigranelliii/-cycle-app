@@ -1,26 +1,484 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------
+   Cycle — design tokens
+   A warm journal: milk paper, aubergine ink, dusty rose, apricot and
+   sage. Gradients are reserved for the few surfaces that carry meaning
+   (today, selection, insights, primary action) so the neutral paper
+   around them stays quiet. Functional text stays at 11px or above.
+   ------------------------------------------------------------------ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  --bg: #faf5ec;
+  --bg-deep: #f3e9dc;
+  --surface: #fffdf9;
+  --soft: #f6ecdf;
+  --soft-light: #fdf9f2;
+
+  --plum: #35182a;
+  --plum-soft: #664654;
+  --muted: #7b6270;
+  --muted-very: #a98f9a;
+
+  --rose: #c58d9c;
+  --rose-soft: #f5e2e6;
+  --rose-deep: #924f60;
+
+  --peach: #d9a07c;
+  --peach-soft: #f9e6d6;
+
+  --sage: #5c6653;
+  --sage-soft: #e9ebdf;
+
+  --line: #e9dbd0;
+  --line-light: #f4ece3;
+
+  --grad-hero:
+    radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.85) 0%, transparent 55%),
+    linear-gradient(155deg, #fffaf2 0%, #f8e9e4 46%, #f2dcc9 100%);
+  --grad-primary: linear-gradient(135deg, #3a1a2c 0%, #2c1422 100%);
+  --grad-selected: linear-gradient(150deg, #3a1a2c 0%, #58293f 100%);
+  --grad-insight: linear-gradient(160deg, #fdf8ef 0%, #f2f0e4 100%);
+  --grad-insight-rose: linear-gradient(160deg, #fdf6f2 0%, #f7e6e4 100%);
+
+  --stack-body: "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --stack-serif: "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+
+  --radius-card: 16px;
+  --radius-field: 14px;
+  --shadow-card:
+    0 2px 3px rgba(74, 38, 54, 0.04),
+    0 18px 36px -26px rgba(74, 38, 54, 0.42);
+  --shadow-hero:
+    0 2px 3px rgba(74, 38, 54, 0.03),
+    0 30px 60px -42px rgba(74, 38, 54, 0.6);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg-deep: var(--bg-deep);
+  --color-surface: var(--surface);
+  --color-soft: var(--soft);
+  --color-soft-light: var(--soft-light);
+  --color-plum: var(--plum);
+  --color-plum-soft: var(--plum-soft);
+  --color-muted: var(--muted);
+  --color-muted-very: var(--muted-very);
+  --color-rose: var(--rose);
+  --color-rose-soft: var(--rose-soft);
+  --color-rose-deep: var(--rose-deep);
+  --color-peach: var(--peach);
+  --color-peach-soft: var(--peach-soft);
+  --color-sage: var(--sage);
+  --color-sage-soft: var(--sage-soft);
+  --color-line: var(--line);
+  --color-line-light: var(--line-light);
+
+  --font-sans: var(--stack-body);
+  --font-display: var(--stack-serif);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(110% 70% at 100% -8%, rgba(245, 226, 230, 0.6) 0%, transparent 55%),
+    radial-gradient(90% 55% at -12% 100%, rgba(233, 235, 223, 0.55) 0%, transparent 60%),
+    linear-gradient(180deg, var(--soft-light) 0%, var(--bg) 40%, var(--bg-deep) 100%);
+  background-attachment: fixed;
+  color: var(--plum);
+  font-family: var(--stack-body);
+  min-height: 100svh;
+  /* Standalone iPhone: keep content clear of the status bar / notch. */
+  padding-top: env(safe-area-inset-top);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  letter-spacing: 0.1px;
+  caret-color: var(--rose-deep);
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* --- browser surfaces the design still owns ----------------------- */
+
+::selection {
+  background: var(--rose-soft);
+  color: var(--plum);
+}
+
+:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@media (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+}
+
+/* --- surfaces ----------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.card-quiet {
+  background: var(--soft);
+  border-radius: var(--radius-card);
+}
+
+/* The one gradient surface that carries the whole screen. */
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--grad-hero);
+  border-radius: 26px;
+  box-shadow: var(--shadow-hero);
+}
+
+.hero::after {
+  /* a single soft highlight, not glassmorphism */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.insight-surface {
+  background: var(--grad-insight);
+  border-radius: var(--radius-card);
+}
+
+.insight-surface-rose {
+  background: var(--grad-insight-rose);
+  border-radius: var(--radius-card);
+}
+
+.divider {
+  height: 0.5px;
+  background: var(--line-light);
+}
+
+/* --- text --------------------------------------------------------- */
+
+.display {
+  font-family: var(--stack-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.display-large {
+  font-family: var(--stack-serif);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  font-variant-numeric: tabular-nums;
+}
+
+.display-sm {
+  font-family: var(--stack-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.label-xs {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- chips (small controls) --------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 15px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--plum);
+  font-size: 13.5px;
+  line-height: 1;
+  transition:
+    background 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+@media (hover: hover) {
+  .chip:hover {
+    border-color: var(--rose);
+  }
+}
+
+.chip:active {
+  transform: scale(0.98);
+}
+
+.chip-on {
+  background: var(--plum);
+  border-color: var(--plum);
+  color: #fdf7f2;
+}
+
+.chip-soft-on {
+  background: var(--rose-soft);
+  border-color: var(--rose);
+  color: var(--plum);
+}
+
+.chip-recorded {
+  background: var(--peach-soft);
+  border-color: var(--peach);
+  color: var(--plum);
+}
+
+/* --- buttons ------------------------------------------------------ */
+
+.btn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px 20px;
+  border-radius: var(--radius-field);
+  font-size: 15px;
+  font-weight: 500;
+  transition:
+    background 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--grad-primary);
+  color: #fdf7f2;
+  box-shadow: 0 14px 28px -20px rgba(43, 23, 33, 0.9);
+}
+
+.btn-ghost {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--plum);
+}
+
+.btn-quiet {
+  background: var(--soft);
+  color: var(--plum);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+/* --- interactive surfaces ----------------------------------------- */
+
+.tap {
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tap:active {
+  transform: scale(0.985);
+}
+
+.day-button {
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.day-button:active {
+  transform: scale(0.94);
+}
+
+.day-selected {
+  background: var(--grad-selected);
+  border-color: var(--plum);
+  color: #fdf7f2;
+}
+
+.day-period {
+  background: var(--rose-soft);
+}
+
+.day-window {
+  background: var(--peach-soft);
+}
+
+/* --- comparison bars ---------------------------------------------- */
+
+.range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-light);
+  overflow: hidden;
+}
+
+.range-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--rose) 0%, var(--rose-deep) 100%);
+}
+
+.range-fill-period {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sage-soft) 0%, var(--sage) 100%);
+}
+
+/* --- nav ---------------------------------------------------------- */
+
+.bottom-nav {
+  background: var(--surface);
+  border-top: 1px solid var(--line-light);
+  box-shadow: 0 -16px 30px -26px rgba(74, 38, 54, 0.6);
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 1;
+  min-height: 48px;
+  padding: 6px 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+  transition: color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-item[data-active="true"] {
+  color: var(--plum);
+}
+
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  width: 44px;
+  border-radius: 999px;
+  transition:
+    background 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-item[data-active="true"] .nav-icon {
+  background: linear-gradient(140deg, var(--rose-soft) 0%, var(--peach-soft) 100%);
+  color: var(--rose-deep);
+}
+
+/* --- misc --------------------------------------------------------- */
+
+.apple-note {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.55;
+}
+
+/* One authored moment: the cycle ring settles in. */
+.ring-in {
+  animation: ring-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes ring-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A short, quiet confirmation after a save. */
+.save-check {
+  animation: save-check 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes save-check {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+textarea {
+  resize: none;
+}
+
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

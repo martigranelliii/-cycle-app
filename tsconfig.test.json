@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-build",
+    "rootDir": ".",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "incremental": false,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "lib/cycle.ts",
+    "lib/dates.ts",
+    "lib/insights.ts",
+    "lib/labels.ts",
+    "lib/storage.ts",
+    "lib/backup.ts",
+    "lib/history.ts",
+    "lib/wellness.ts",
+    "types/index.ts"
+  ]
+}
