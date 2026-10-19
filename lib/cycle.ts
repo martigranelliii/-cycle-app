@@ -40,6 +40,7 @@ export interface EstimateConfidence {
 export interface OvulationEstimate {
   start: string;
   end: string;
+  /** The central (best) estimated ovulation day. Raw material for the window. */
   expected: string;
   /** Cycle day of the point estimate, when a current cycle start is known. */
   cycleDay: number | null;
@@ -49,11 +50,18 @@ export interface OvulationEstimate {
   confidence: EstimateConfidence;
 }
 
-/** The fertile-window estimate derived from the ovulation range. */
+/**
+ * The estimated fertile window shown in the app.
+ *
+ * It is drawn around the central estimated ovulation day: 5 calendar days
+ * before and 2 after (8 days inclusive). It is an estimate for the calendar,
+ * never a certainty and never contraceptive guidance.
+ */
 export interface FertileWindow {
   start: string;
   end: string;
-  expectedOvulation: string;
+  /** The central estimated ovulation day this window is built around. */
+  estimatedOvulationDay: string;
   /** Expected period start this window belongs to. */
   periodStart: string;
 }
@@ -189,8 +197,14 @@ const RECENT_CYCLES = 6;
 const LUTEAL_DAYS = 14;
 const OVULATION_EARLY = 16;
 const OVULATION_LATE = 12;
-/** A soft, non-medical assumption used only to draw a broader window. */
-const FERTILE_DAYS_BEFORE = 5;
+/**
+ * The app's convention for the displayed estimated fertile window: it is drawn
+ * around the central estimated ovulation day. Five calendar days before, the
+ * day itself, and two calendar days after — eight days inclusive. It stays a
+ * soft estimate for the calendar, not a contraceptive calculation.
+ */
+const FERTILE_DAYS_BEFORE_OVULATION = 5;
+const FERTILE_DAYS_AFTER_OVULATION = 2;
 
 function average(values: number[]): number {
   return values.reduce((total, value) => total + value, 0) / values.length;
@@ -242,6 +256,27 @@ export function estimatePhase(
   if (cycleDay <= ovulationDay - 2) return "follicolare";
   if (cycleDay <= ovulationDay + 1) return "ovulatoria";
   return "luteale";
+}
+
+/**
+ * Single source of truth for the displayed estimated fertile window.
+ *
+ * Given the central estimated ovulation day it returns the app's convention:
+ * 5 calendar days before, the day itself and 2 calendar days after (8 days,
+ * both boundaries inclusive). Oggi, Calendario and Insights all consume this,
+ * so they can never disagree about which dates belong to the window. It is an
+ * estimate and must never be used as contraceptive guidance.
+ */
+export function getEstimatedFertileWindow(estimatedOvulationDay: string): {
+  start: string;
+  end: string;
+  estimatedOvulationDay: string;
+} {
+  return {
+    start: addDays(estimatedOvulationDay, -FERTILE_DAYS_BEFORE_OVULATION),
+    end: addDays(estimatedOvulationDay, FERTILE_DAYS_AFTER_OVULATION),
+    estimatedOvulationDay,
+  };
 }
 
 /** Group logged period days, tolerating a single skipped day in between. */
@@ -391,26 +426,23 @@ export function computeCycle(input: CycleInput): CycleStats {
   /**
    * Ovulation is estimated backwards from the expected period, never as a
    * fixed day 14. The 12–16 day luteal range gives a small, honest window.
-   * The fertile window adds a few days before that range: it is a soft
-   * estimate for the calendar, not a contraceptive calculation.
+   * The displayed fertile window is then drawn around the central estimated
+   * ovulation day: it is a soft estimate for the calendar, not a contraceptive
+   * calculation.
    */
   const ovulationWindows: OvulationWindow[] = [];
   const fertileWindows: FertileWindow[] = [];
 
   if (prediction) {
+    const expectedOvulation = addDays(prediction.expected, -LUTEAL_DAYS);
     ovulationWindows.push({
       start: addDays(prediction.start, -OVULATION_EARLY),
       end: addDays(prediction.end, -OVULATION_LATE),
-      expected: addDays(prediction.expected, -LUTEAL_DAYS),
+      expected: expectedOvulation,
       periodStart: prediction.expected,
     });
     fertileWindows.push({
-      start: addDays(
-        prediction.start,
-        -(OVULATION_EARLY + FERTILE_DAYS_BEFORE)
-      ),
-      end: addDays(prediction.end, -(OVULATION_LATE - 1)),
-      expectedOvulation: addDays(prediction.expected, -LUTEAL_DAYS),
+      ...getEstimatedFertileWindow(expectedOvulation),
       periodStart: prediction.expected,
     });
   }
@@ -424,12 +456,7 @@ export function computeCycle(input: CycleInput): CycleStats {
       periodStart: window.start,
     });
     fertileWindows.push({
-      start: addDays(
-        window.start,
-        -(OVULATION_EARLY + FERTILE_DAYS_BEFORE)
-      ),
-      end: addDays(window.start, -(OVULATION_LATE - 1)),
-      expectedOvulation: expected,
+      ...getEstimatedFertileWindow(expected),
       periodStart: window.start,
     });
   }

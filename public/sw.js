@@ -1,7 +1,7 @@
 /* Cycle — minimal offline shell.
    Keeps the app usable with no connection. No background sync, no push. */
 
-const CACHE = "cycle-v6";
+const CACHE = "cycle-v7";
 const SHELL = [
   "/",
   "/manifest.webmanifest",

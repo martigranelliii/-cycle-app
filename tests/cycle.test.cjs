@@ -7,7 +7,11 @@ const {
   makeLog,
   logsFrom,
 } = require("./helpers.cjs");
-const { describeOvulation } = require("../.test-build/lib/cycle.js");
+const {
+  describeOvulation,
+  getEstimatedFertileWindow,
+} = require("../.test-build/lib/cycle.js");
+const { range } = require("../.test-build/lib/dates.js");
 
 test("ovulation is estimated from the expected period, not a fixed day 14", () => {
   const logs = logsFrom([
@@ -39,9 +43,104 @@ test("ovulation range and fertile window follow the prediction window", () => {
   assert.equal(stats.fertileWindows.length, 3);
   assert.equal(stats.ovulation.start, addDays(prediction.start, -16));
   assert.equal(stats.ovulation.end, addDays(prediction.end, -12));
-  assert.equal(stats.fertileWindow.start, addDays(prediction.start, -21));
-  assert.equal(stats.fertileWindow.end, addDays(prediction.end, -11));
-  assert.ok(diffDays(stats.fertileWindow.end, stats.fertileWindow.start) >= 5);
+  // The displayed fertile window is -5/+2 around the central ovulation day.
+  assert.equal(stats.fertileWindow.start, addDays(stats.ovulation.expected, -5));
+  assert.equal(stats.fertileWindow.end, addDays(stats.ovulation.expected, 2));
+  assert.equal(diffDays(stats.fertileWindow.end, stats.fertileWindow.start), 7);
+});
+
+test("computed fertile windows equal the canonical -5/+2 helper for every cycle", () => {
+  const logs = logsFrom([
+    makeLog("2026-01-01", { periodFlow: "medium" }),
+    makeLog("2026-01-30", { periodFlow: "medium" }),
+    makeLog("2026-02-27", { periodFlow: "medium" }),
+  ]);
+  const stats = computeCycle({ logs, today: "2026-03-05" });
+
+  assert.equal(stats.fertileWindows.length, 3);
+  assert.equal(stats.ovulationWindows.length, 3);
+
+  for (let index = 0; index < stats.fertileWindows.length; index += 1) {
+    const ovulationDay = stats.ovulationWindows[index].expected;
+    const canonical = getEstimatedFertileWindow(ovulationDay);
+    assert.equal(stats.fertileWindows[index].start, canonical.start);
+    assert.equal(stats.fertileWindows[index].end, canonical.end);
+    assert.equal(
+      stats.fertileWindows[index].estimatedOvulationDay,
+      ovulationDay,
+      "the window records the central estimated ovulation day"
+    );
+  }
+});
+
+test("CASE A: fertile window is 5 days before and 2 days after estimated ovulation", () => {
+  const window = getEstimatedFertileWindow("2026-10-14");
+  assert.equal(window.start, "2026-10-09");
+  assert.equal(window.end, "2026-10-16");
+  assert.equal(window.estimatedOvulationDay, "2026-10-14");
+});
+
+test("CASE B: fertile window handles a month boundary", () => {
+  const window = getEstimatedFertileWindow("2026-11-03");
+  assert.equal(window.start, "2026-10-29");
+  assert.equal(window.end, "2026-11-05");
+});
+
+test("CASE C: fertile window handles a year boundary", () => {
+  const window = getEstimatedFertileWindow("2027-01-02");
+  assert.equal(window.start, "2026-12-28");
+  assert.equal(window.end, "2027-01-04");
+});
+
+test("fertile window always contains exactly 8 days around the ovulation day", () => {
+  const ovulationDays = [
+    "2026-10-14",
+    "2026-11-03",
+    "2027-01-02",
+    "2026-02-26",
+    "2026-12-31",
+    "2026-03-01",
+  ];
+
+  for (const ovulationDay of ovulationDays) {
+    const window = getEstimatedFertileWindow(ovulationDay);
+    const days = range(window.start, window.end);
+    assert.equal(days.length, 8, `${ovulationDay}: eight calendar days`);
+    assert.equal(days[0], window.start);
+    assert.equal(days[days.length - 1], window.end);
+
+    const centralIndex = days.indexOf(ovulationDay);
+    assert.equal(centralIndex, 5, `${ovulationDay}: five days precede ovulation`);
+    assert.equal(
+      days.length - 1 - centralIndex,
+      2,
+      `${ovulationDay}: two days follow ovulation`
+    );
+    assert.ok(
+      diffDays(ovulationDay, window.start) === 5,
+      "start is exactly -5 calendar days"
+    );
+    assert.ok(
+      diffDays(window.end, ovulationDay) === 2,
+      "end is exactly +2 calendar days"
+    );
+  }
+});
+
+test("ovulation tracks the recorded cycle length, never a fixed day 14", () => {
+  const logs = logsFrom([
+    makeLog("2026-01-01", { periodFlow: "medium" }),
+    makeLog("2026-01-31", { periodFlow: "medium" }), // 30 days
+    makeLog("2026-03-02", { periodFlow: "medium" }), // 30 days
+  ]);
+  const stats = computeCycle({ logs, today: "2026-03-05" });
+
+  assert.equal(stats.averageCycleLength, 30);
+  assert.ok(stats.ovulation);
+  assert.equal(stats.ovulation.expected, addDays(stats.nextPeriodStart, -14));
+  assert.equal(stats.ovulation.cycleDay, 17);
+  assert.notEqual(stats.ovulation.cycleDay, 14, "never hardcoded to day 14");
+  assert.equal(stats.fertileWindow.estimatedOvulationDay, stats.ovulation.expected);
 });
 
 test("insufficient history: initial estimate and low confidence", () => {

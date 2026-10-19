@@ -196,7 +196,7 @@ export function InsightsView() {
                   Ovulazione stimata
                 </span>
                 <span className="display-sm text-right text-[16px] leading-snug text-plum">
-                  {formatRange(stats.ovulation.start, stats.ovulation.end)}
+                  {formatRange(stats.ovulation.expected, stats.ovulation.expected)}
                 </span>
               </div>
             ) : null}
