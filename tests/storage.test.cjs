@@ -1,3 +1,4 @@
+// All fixtures are synthetic and do not represent a person.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { sanitizeData } = require("../.test-build/lib/storage.js");
@@ -6,13 +7,6 @@ const {
   parseBackup,
   mergeBackup,
 } = require("../.test-build/lib/backup.js");
-const {
-  applyHistoricalImport,
-  PERIOD_HISTORY,
-  SEXUAL_ACTIVITY_HISTORY,
-  hasImportedHistory,
-} = require("../.test-build/lib/history.js");
-
 const ISO = "2026-01-01T00:00:00.000Z";
 
 function log(date, patch = {}) {
@@ -97,46 +91,6 @@ test("birthday-compatible: an old payload with no new fields loads", () => {
   assert.equal(entry.cervicalMucus, undefined);
 });
 
-test("historical import keeps 33 period days and 53 recorded sexual days", () => {
-  const result = applyHistoricalImport(sanitizeData({}));
-  assert.equal(result.ok, true);
-  assert.equal(result.report.periodDays, PERIOD_HISTORY.length);
-  assert.equal(result.report.sexualActivityDays, SEXUAL_ACTIVITY_HISTORY.length);
-  assert.equal(PERIOD_HISTORY.length, 33);
-  assert.equal(SEXUAL_ACTIVITY_HISTORY.length, 53);
-
-  for (const date of PERIOD_HISTORY) {
-    assert.equal(result.data.logs[date].periodFlow, "recorded");
-  }
-  for (const date of SEXUAL_ACTIVITY_HISTORY) {
-    assert.equal(result.data.logs[date].sexualActivity, "recorded");
-  }
-  assert.equal(hasImportedHistory(result.data), true);
-
-  const second = applyHistoricalImport(result.data);
-  assert.equal(second.report.alreadyImported, true);
-  assert.equal(second.data, result.data, "idempotent: data is unchanged");
-});
-
-test("historical import never overwrites a day the person already filled", () => {
-  const base = sanitizeData({
-    logs: {
-      "2026-06-09": log("2026-06-09", {
-        moods: ["serena"],
-        notes: "mio",
-        energy: 4,
-      }),
-    },
-  });
-  const result = applyHistoricalImport(base);
-  assert.deepEqual(result.data.logs["2026-06-09"].moods, ["serena"]);
-  assert.equal(result.data.logs["2026-06-09"].notes, "mio");
-  assert.equal(result.data.logs["2026-06-09"].energy, 4);
-  // The period and sexual flags are still filled because they were missing.
-  assert.equal(result.data.logs["2026-06-09"].periodFlow, "recorded");
-  assert.equal(result.data.logs["2026-06-09"].sexualActivity, "recorded");
-});
-
 test("backup carries the new fields and never rewrites old recorded data", () => {
   const data = sanitizeData({
     onboarding: {
@@ -168,7 +122,12 @@ test("backup carries the new fields and never rewrites old recorded data", () =>
   assert.equal(parsed.data.logs["2026-10-11"].cervicalMucus, "creamy");
 
   const current = sanitizeData({
-    onboarding: { completed: true, lastPeriodStart: null, cycleLength: null, periodLength: null },
+    onboarding: {
+      completed: true,
+      lastPeriodStart: null,
+      cycleLength: null,
+      periodLength: null,
+    },
     logs: { "2026-10-11": log("2026-10-11", { notes: "qui" }) },
   });
   const { data: merged, report } = mergeBackup(current, parsed.data);
@@ -181,7 +140,7 @@ test("backup carries the new fields and never rewrites old recorded data", () =>
 
 test("parseBackup accepts a raw old payload and rejects malformed files", () => {
   const raw = parseBackup(
-    JSON.stringify({ logs: { "2026-01-01": log("2026-01-01") } })
+    JSON.stringify({ logs: { "2026-01-01": log("2026-01-01") } }),
   );
   assert.equal(raw.ok, true);
 

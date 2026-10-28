@@ -19,11 +19,7 @@ export type PeriodFlow = "none" | "recorded" | "light" | "medium" | "heavy";
  * `"recorded"` is historical data: it must never be reclassified, and the UI
  * shows it neutrally as "Rapporto registrato".
  */
-export type SexualActivity =
-  | "none"
-  | "recorded"
-  | "protected"
-  | "unprotected";
+export type SexualActivity = "none" | "recorded" | "protected" | "unprotected";
 
 /** Optional LH test result. Absence means it was not recorded. */
 export type OvulationTestResult = "negative" | "positive";
@@ -64,6 +60,9 @@ export interface DailyLog {
   /** Local date key, `YYYY-MM-DD`. */
   date: string;
   periodFlow: PeriodFlow;
+  /** Absent on legacy logs: a negative answer cannot be inferred. */
+  flowRecorded?: boolean;
+  symptomsRecorded?: boolean;
   moods: MoodId[];
   symptoms: SymptomId[];
   /** 1 to 5, or null when the user skipped it. */
@@ -106,6 +105,8 @@ export interface CycleData {
   logs: Record<string, DailyLog>;
   /** One-time import markers: `id` → ISO timestamp. Missing on older data. */
   imports?: Record<string, string>;
+  /** Conflicting imported versions retained locally, never discarded. */
+  backupConflicts?: Record<string, DailyLog[]>;
 }
 
 export type TabId = "oggi" | "calendario" | "registra" | "insights";

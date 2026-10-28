@@ -59,13 +59,14 @@ export function Chip({
   children,
   ...props
 }: ChipProps) {
-  const on = selected
-    ? tone === "dark"
-      ? "chip-on"
-      : "chip-soft-on"
-    : "";
+  const on = selected ? (tone === "dark" ? "chip-on" : "chip-soft-on") : "";
   return (
-    <button type="button" className={`chip ${on} ${className}`} {...props}>
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={`chip ${on} ${className}`}
+      {...props}
+    >
       {children}
     </button>
   );
@@ -111,13 +112,17 @@ export function StatRow({
   return (
     <div className="flex flex-col gap-1 py-3">
       <div className="flex items-baseline justify-between gap-4">
-        <span className="display-sm text-[20px] text-plum-soft leading-tight">{label}</span>
+        <span className="display-sm text-[20px] text-plum-soft leading-tight">
+          {label}
+        </span>
         <span className="display-sm text-[27px] leading-none text-plum whitespace-nowrap">
           {value}
         </span>
       </div>
       {note ? (
-        <span className="text-[11px] leading-none uppercase tracking-[0.14em] text-muted">{note}</span>
+        <span className="text-[11px] leading-none uppercase tracking-[0.14em] text-muted">
+          {note}
+        </span>
       ) : null}
     </div>
   );
@@ -148,12 +153,14 @@ export function Pill({
 
 export function Stepper({
   value,
+  label = "Durata",
   min,
   max,
   suffix,
   onChange,
 }: {
   value: number;
+  label?: string;
   min: number;
   max: number;
   suffix: string;
@@ -165,7 +172,7 @@ export function Stepper({
     <div className="flex items-center justify-between rounded-2xl border border-line bg-surface px-3 py-2">
       <button
         type="button"
-        aria-label="Diminuisci"
+        aria-label={`Diminuisci ${label}`}
         className={buttonClass}
         disabled={value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
@@ -173,11 +180,14 @@ export function Stepper({
         −
       </button>
       <span className="display-sm text-[20px] leading-none">
-        {value} <span className="text-[11px] uppercase tracking-widest text-muted">{suffix}</span>
+        {value}{" "}
+        <span className="text-[11px] uppercase tracking-widest text-muted">
+          {suffix}
+        </span>
       </span>
       <button
         type="button"
-        aria-label="Aumenta"
+        aria-label={`Aumenta ${label}`}
         className={buttonClass}
         disabled={value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
@@ -205,7 +215,10 @@ export function CycleProgress({
   const markerY = SIZE / 2 + RADIUS * Math.sin((markerAngle * Math.PI) / 180);
 
   return (
-    <div className="ring-in relative mx-auto" style={{ width: SIZE, height: SIZE }}>
+    <div
+      className="ring-in relative mx-auto"
+      style={{ width: SIZE, height: SIZE }}
+    >
       <div
         aria-hidden
         className="absolute inset-5 rounded-full"
@@ -291,7 +304,8 @@ export function PhaseLine({ phase }: { phase: PhaseId | null }) {
       <p className="display-sm text-[17px] leading-none text-plum">
         {info.label}
         <span className="ml-2 align-middle text-[11px] uppercase tracking-[0.14em] text-muted">
-          {" "}fase stimata
+          {" "}
+          fase stimata
         </span>
       </p>
       <p className="mt-1.5 text-[12px] leading-relaxed text-muted">

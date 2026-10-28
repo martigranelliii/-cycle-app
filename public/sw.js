@@ -1,7 +1,7 @@
 /* Cycle — minimal offline shell.
    Keeps the app usable with no connection. No background sync, no push. */
 
-const CACHE = "cycle-v7";
+const CACHE = "cycle-v3-private-1";
 const SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -25,7 +25,7 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
+        Promise.all(keys.filter((key) => key.startsWith("cycle-") && key !== CACHE).map((key) => caches.delete(key)))
       )
       .then(() => self.clients.claim())
   );

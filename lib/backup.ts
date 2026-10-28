@@ -1,6 +1,6 @@
 import type { CycleData, DailyLog } from "@/types";
 import { isValidKey } from "./dates";
-import { sanitizeData } from "./storage";
+import { sanitizeData, isReadableLog } from "./storage";
 
 /**
  * Local backup, nothing else.
@@ -25,7 +25,7 @@ export interface BackupFile {
 
 export function buildBackup(
   data: CycleData,
-  now = new Date().toISOString()
+  now = new Date().toISOString(),
 ): BackupFile {
   return {
     app: BACKUP_APP,
@@ -39,7 +39,7 @@ export function buildBackup(
 export function backupFilename(now = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `cycle-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-    now.getDate()
+    now.getDate(),
   )}.json`;
 }
 
@@ -84,10 +84,7 @@ export function parseBackup(text: string): BackupParseResult {
     if (parsed.app !== undefined && parsed.app !== BACKUP_APP) {
       return { ok: false, error: "Questo file non è un backup di Cycle." };
     }
-    if (
-      typeof parsed.version === "number" &&
-      parsed.version > BACKUP_VERSION
-    ) {
+    if (typeof parsed.version === "number" && parsed.version > BACKUP_VERSION) {
       return {
         ok: false,
         error:
@@ -110,13 +107,16 @@ export function parseBackup(text: string): BackupParseResult {
 
   if ("logs" in payload) {
     if (!isPlainObject(payload.logs)) {
-      return { ok: false, error: "Il backup contiene registrazioni non valide." };
+      return {
+        ok: false,
+        error: "Il backup contiene registrazioni non valide.",
+      };
     }
     for (const [date, log] of Object.entries(payload.logs)) {
       if (!isValidKey(date)) {
         return { ok: false, error: "Il backup contiene date non valide." };
       }
-      if (!isPlainObject(log)) {
+      if (!isReadableLog(log)) {
         return {
           ok: false,
           error: "Il backup contiene una registrazione non valida.",
@@ -129,6 +129,24 @@ export function parseBackup(text: string): BackupParseResult {
     return { ok: false, error: "Il backup contiene marcatori non validi." };
   }
 
+  if (payload.backupConflicts !== undefined) {
+    if (!isPlainObject(payload.backupConflicts))
+      return {
+        ok: false,
+        error: "Il backup contiene versioni alternative non valide.",
+      };
+    for (const [date, versions] of Object.entries(payload.backupConflicts)) {
+      if (
+        !isValidKey(date) ||
+        !Array.isArray(versions) ||
+        !versions.every(isReadableLog)
+      )
+        return {
+          ok: false,
+          error: "Il backup contiene versioni alternative non valide.",
+        };
+    }
+  }
   // Same normalisation as the local store: unknown fields are dropped and
   // old data keeps loading exactly as before.
   const data = sanitizeData(payload);
@@ -144,19 +162,45 @@ export interface MergeReport {
   importsAdded: number;
   /** True when the profile came from the backup (fresh device). */
   adoptedProfile: boolean;
+  conflicts: number;
 }
 
 export function mergeBackup(
   current: CycleData,
-  incoming: CycleData
+  incoming: CycleData,
+  preferIncoming = false,
 ): { data: CycleData; report: MergeReport } {
   const logs: Record<string, DailyLog> = { ...current.logs };
   let added = 0;
   let kept = 0;
+  let conflicts = 0;
+  const backupConflicts = structuredClone(current.backupConflicts ?? {});
+  for (const [date, versions] of Object.entries(
+    incoming.backupConflicts ?? {},
+  )) {
+    const all = [...(backupConflicts[date] ?? []), ...versions];
+    backupConflicts[date] = all.filter(
+      (v, index) =>
+        all.findIndex(
+          (other) => JSON.stringify(other) === JSON.stringify(v),
+        ) === index,
+    );
+  }
 
   for (const [date, log] of Object.entries(incoming.logs)) {
     if (logs[date]) {
       kept += 1;
+      if (JSON.stringify(logs[date]) !== JSON.stringify(log)) {
+        conflicts += 1;
+        const alternate = preferIncoming ? logs[date] : log;
+        const versions = backupConflicts[date] ?? [];
+        if (
+          !versions.some((v) => JSON.stringify(v) === JSON.stringify(alternate))
+        )
+          versions.push(alternate);
+        backupConflicts[date] = versions;
+        if (preferIncoming) logs[date] = log;
+      }
       continue;
     }
     logs[date] = log;
@@ -172,22 +216,27 @@ export function mergeBackup(
     }
   }
 
-  const freshDevice =
-    !current.onboarding.completed && Object.keys(current.logs).length === 0;
+  const freshDevice = Object.keys(current.logs).length === 0;
 
   return {
     data: {
       ...current,
       logs,
       imports,
-      onboarding: freshDevice ? incoming.onboarding : current.onboarding,
-      settings: freshDevice ? incoming.settings : current.settings,
+      backupConflicts,
+      onboarding:
+        freshDevice || preferIncoming
+          ? incoming.onboarding
+          : current.onboarding,
+      settings:
+        freshDevice || preferIncoming ? incoming.settings : current.settings,
     },
     report: {
       added,
       kept,
       importsAdded,
-      adoptedProfile: freshDevice,
+      adoptedProfile: freshDevice || preferIncoming,
+      conflicts,
     },
   };
 }

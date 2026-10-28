@@ -11,7 +11,7 @@ const TABS: {
   { id: "oggi", label: "Oggi", Icon: IconSun },
   { id: "calendario", label: "Calendario", Icon: IconCalendar },
   { id: "registra", label: "Registra", Icon: IconPlus },
-  { id: "insights", label: "Insights", Icon: IconSpark },
+  { id: "insights", label: "Andamento", Icon: IconSpark },
 ];
 
 export function BottomNav({

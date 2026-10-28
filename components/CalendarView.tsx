@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useStore } from "@/lib/store";
 import { cycleDayFor, estimatePhase, predictedDays } from "@/lib/cycle";
@@ -17,13 +17,7 @@ import {
 } from "@/lib/dates";
 import { PHASES, hasSexualActivity } from "@/lib/labels";
 import { LogSummary } from "./LogSummary";
-import {
-  Card,
-  GhostButton,
-  PrimaryButton,
-  Screen,
-  SectionTitle,
-} from "./ui";
+import { Card, GhostButton, PrimaryButton, Screen, SectionTitle } from "./ui";
 import { IconChevronLeft, IconHeart } from "./icons";
 
 export function CalendarView({
@@ -40,16 +34,14 @@ export function CalendarView({
   onRegister: (date: string) => void;
 }) {
   const { data, stats, today } = useStore();
+  const [layers, setLayers] = useState(false);
 
   const weeks = useMemo(() => monthWeeks(month), [month]);
   const periodSet = useMemo(
     () => new Set(stats.periodDays),
-    [stats.periodDays]
+    [stats.periodDays],
   );
-  const predictedSet = useMemo(
-    () => new Set(predictedDays(stats)),
-    [stats]
-  );
+  const predictedSet = useMemo(() => new Set(predictedDays(stats)), [stats]);
   const windowSet = useMemo(() => {
     const days = new Set<string>();
     const prediction = stats.prediction;
@@ -82,10 +74,13 @@ export function CalendarView({
   }, [stats.ovulationWindows]);
   const ovulationSet = useMemo(
     () => new Set(stats.ovulationWindows.map((window) => window.expected)),
-    [stats.ovulationWindows]
+    [stats.ovulationWindows],
   );
 
   const selectedLog = data.logs[selected] ?? null;
+  const episode = stats.periods.find(
+    (p) => selected >= p.start && selected <= p.end,
+  );
   const isFuture = diffDays(selected, today) > 0;
   const isCurrentMonth = monthKey(month) === monthKey(today);
   const selectedDay = cycleDayFor(selected, stats);
@@ -93,15 +88,15 @@ export function CalendarView({
     predictedSet.has(selected) && !periodSet.has(selected);
   const selectedInWindow =
     windowSet.has(selected) && !selectedPredicted && !periodSet.has(selected);
-  const selectedInFertile = fertileSet.has(selected);
-  const selectedInOvulationRange = ovulationRangeSet.has(selected);
-  const selectedIsOvulationExpected = ovulationSet.has(selected);
+  const selectedInFertile = layers && fertileSet.has(selected);
+  const selectedInOvulationRange = layers && ovulationRangeSet.has(selected);
+  const selectedIsOvulationExpected = layers && ovulationSet.has(selected);
   const selectedPhase =
     selectedDay !== null
       ? estimatePhase(
           selectedDay,
           stats.averageCycleLength,
-          stats.averagePeriodLength
+          stats.averagePeriodLength,
         )
       : null;
 
@@ -146,6 +141,16 @@ export function CalendarView({
         </div>
       </header>
 
+      <button
+        type="button"
+        className="mb-3 min-h-11 text-sm text-muted"
+        aria-expanded={layers}
+        onClick={() => setLayers(!layers)}
+      >
+        {layers
+          ? "Nascondi dettagli facoltativi"
+          : "Mostra stime di ovulazione e rapporti"}
+      </button>
       <Card className="p-2.5">
         <div className="grid grid-cols-7">
           {WEEKDAYS.map((weekday, index) => (
@@ -164,17 +169,19 @@ export function CalendarView({
 
             const isPeriod = periodSet.has(day);
             const isPredicted = !isPeriod && predictedSet.has(day);
-            const inWindow =
-              !isPeriod && !isPredicted && windowSet.has(day);
+            const inWindow = !isPeriod && !isPredicted && windowSet.has(day);
             const isFertile =
-              !isPeriod && !isPredicted && !inWindow && fertileSet.has(day);
+              layers &&
+              !isPeriod &&
+              !isPredicted &&
+              !inWindow &&
+              fertileSet.has(day);
             const hasLog = Boolean(data.logs[day]);
             const isToday = day === today;
             const isSelected = day === selected;
-            const hasActivity = hasSexualActivity(
-              data.logs[day]?.sexualActivity
-            );
-            const isOvulation = ovulationSet.has(day);
+            const hasActivity =
+              layers && hasSexualActivity(data.logs[day]?.sexualActivity);
+            const isOvulation = layers && ovulationSet.has(day);
             const showLogDot = hasLog && !isPeriod && !isSelected;
 
             const background = isPeriod
@@ -267,69 +274,19 @@ export function CalendarView({
 
         <div className="divider my-3" />
 
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-1 pb-1">
+        <div className="flex flex-wrap gap-3 px-1 pb-1 text-sm text-muted">
           <Legend
-            swatch={
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ background: "var(--rose-soft)" }}
-              />
-            }
-            label="Mestruazioni"
+            swatch={<span className="h-3 w-3 rounded-full bg-rose-soft" />}
+            label="Mestruazioni registrate"
           />
           <Legend
-            swatch={
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ border: "1px dashed var(--rose-deep)" }}
-              />
-            }
-            label="Periodo previsto"
+            swatch={<span className="h-3 w-3 rounded-full bg-peach-soft" />}
+            label="Intervallo stimato"
           />
-          <Legend
-            swatch={
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ background: "var(--peach-soft)" }}
-              />
-            }
-            label="Finestra probabile"
-          />
-          <Legend
-            swatch={
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ background: "var(--sage-soft)" }}
-              />
-            }
-            label="Finestra fertile stimata"
-          />
-          <Legend
-            swatch={
-              <span
-                className="h-[5px] w-[5px] rounded-full"
-                style={{ background: "var(--sage)" }}
-              />
-            }
-            label="Ovulazione stimata"
-          />
-          <Legend
-            swatch={
-              <span
-                className="h-[5px] w-[5px] rounded-full"
-                style={{ background: "var(--muted-very)" }}
-              />
-            }
-            label="Giorno registrato"
-          />
-          <Legend
-            swatch={
-              <span style={{ color: "var(--rose-deep)" }}>
-                <IconHeart className="h-3 w-3" />
-              </span>
-            }
-            label="Rapporti"
-          />
+          <span>• Giorno registrato · Bordo: oggi</span>
+          {layers ? (
+            <span>Salvia: stime di ovulazione/fertilità · ♥ Rapporti</span>
+          ) : null}
         </div>
       </Card>
 
@@ -361,7 +318,7 @@ export function CalendarView({
             <p className="mt-1.5 text-[12px] text-muted">{subtitle}</p>
           </div>
 
-          {stats.hasPeriodData ? (
+          {stats.hasPeriodData && layers ? (
             <div className="mb-6 flex flex-col gap-4 border-b border-line-light pb-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
@@ -413,6 +370,15 @@ export function CalendarView({
           {selectedLog ? (
             <div className="flex flex-col gap-6">
               <LogSummary log={selectedLog} />
+              {episode ? (
+                <p className="text-sm text-muted">
+                  {episode.status === "ongoing"
+                    ? "Episodio ancora aperto: la durata non entra nella media. Quando il flusso termina, registra Nessuno il giorno successivo."
+                    : episode.status === "incomplete"
+                      ? "Episodio con fine non confermata o giornate mancanti: non entra nella durata media. Puoi completarlo se ricordi i giorni."
+                      : "Episodio completato con una fine registrata."}
+                </p>
+              ) : null}
               {isFuture ? (
                 <p className="text-[12px] leading-relaxed text-muted">
                   Giorno futuro: la registrazione è in sola lettura.
@@ -448,20 +414,14 @@ export function CalendarView({
       </section>
 
       <p className="apple-note mt-8">
-        Il tratteggio e le fasce colorate sono stime basate sul tuo storico,
-        non certezze. La finestra fertile non è un metodo contraccettivo.
+        Le fasce previste sono intervalli stimati, non giorni confermati. Le
+        stime di ovulazione non sono un metodo contraccettivo.
       </p>
     </Screen>
   );
 }
 
-function Legend({
-  swatch,
-  label,
-}: {
-  swatch: ReactNode;
-  label: string;
-}) {
+function Legend({ swatch, label }: { swatch: ReactNode; label: string }) {
   return (
     <span className="flex items-center gap-2 text-[11px] leading-tight text-muted">
       {swatch}

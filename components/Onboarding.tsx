@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Onboarding as OnboardingData } from "@/types";
 import { useStore } from "@/lib/store";
+import { BackupImport } from "./DataSettings";
 import { PrimaryButton, Stepper } from "./ui";
 
 function Wordmark() {
@@ -19,12 +20,18 @@ function Wordmark() {
 }
 
 export function Onboarding() {
-  const { finishOnboarding, today } = useStore();
+  const { finishOnboarding, today, error } = useStore();
   const [step, setStep] = useState(0);
   const [lastPeriodStart, setLastPeriodStart] = useState<string | null>(null);
   const [cycleLength, setCycleLength] = useState(28);
   const [periodLength, setPeriodLength] = useState(5);
   const [unknownLengths, setUnknownLengths] = useState(false);
+
+  useEffect(() => {
+    const heading = document.querySelector<HTMLElement>("h1,h2");
+    heading?.setAttribute("tabindex", "-1");
+    heading?.focus({ preventScroll: true });
+  }, [step]);
 
   function finish() {
     const data: OnboardingData = {
@@ -38,6 +45,19 @@ export function Onboarding() {
 
   return (
     <div className="mx-auto flex min-h-[100svh] w-full max-w-[430px] flex-col px-6 pt-16 pb-10">
+      {error ? (
+        <p role="alert" className="mb-3 text-sm text-rose-deep">
+          {error}
+        </p>
+      ) : null}
+      {step > 0 ? (
+        <button
+          className="mb-4 min-h-11 text-left text-sm"
+          onClick={() => setStep(step - 1)}
+        >
+          Indietro
+        </button>
+      ) : null}
       <div className="flex-1">
         {step === 0 ? (
           <div className="flex min-h-[72svh] flex-col justify-between">
@@ -51,7 +71,10 @@ export function Onboarding() {
                 Nessun account. Tutto resta su questo dispositivo.
               </p>
             </div>
-            <PrimaryButton onClick={() => setStep(1)}>Iniziamo</PrimaryButton>
+            <div className="space-y-3">
+              <PrimaryButton onClick={() => setStep(1)}>Iniziamo</PrimaryButton>
+              <BackupImport />
+            </div>
           </div>
         ) : null}
 
@@ -74,6 +97,7 @@ export function Onboarding() {
                 Serve solo per iniziare. Puoi cambiarla quando vuoi.
               </p>
               <input
+                aria-label="Data di inizio delle ultime mestruazioni"
                 type="date"
                 max={today}
                 value={lastPeriodStart ?? ""}
@@ -84,7 +108,10 @@ export function Onboarding() {
               />
             </div>
             <div className="flex flex-col gap-3">
-              <PrimaryButton disabled={!lastPeriodStart} onClick={() => setStep(2)}>
+              <PrimaryButton
+                disabled={!lastPeriodStart}
+                onClick={() => setStep(2)}
+              >
                 Continua
               </PrimaryButton>
               <button
@@ -117,14 +144,17 @@ export function Onboarding() {
                 <span className="label-xs">Passo 2 di 2</span>
               </div>
               <p className="mt-4 text-[14px] leading-relaxed text-muted">
-                Valori di partenza per le stime. Diventeranno precisi con il
-                tuo storico.
+                Valori di partenza per le stime. Si aggiorneranno con il tuo
+                storico, restando indicativi.
               </p>
 
-              <div className={`mt-8 flex flex-col gap-5 ${unknownLengths ? "opacity-40" : ""}`}>
+              <div
+                className={`mt-8 flex flex-col gap-5 ${unknownLengths ? "opacity-40" : ""}`}
+              >
                 <div>
                   <p className="label-xs mb-2">Ciclo</p>
                   <Stepper
+                    label="Durata del ciclo"
                     value={cycleLength}
                     min={21}
                     max={40}
@@ -135,6 +165,7 @@ export function Onboarding() {
                 <div>
                   <p className="label-xs mb-2">Mestruazioni</p>
                   <Stepper
+                    label="Durata delle mestruazioni"
                     value={periodLength}
                     min={2}
                     max={9}
@@ -145,7 +176,9 @@ export function Onboarding() {
               </div>
             </div>
             <div className="flex flex-col gap-3">
-              <PrimaryButton onClick={finish}>Inizia a usare Cycle</PrimaryButton>
+              <PrimaryButton onClick={finish}>
+                Inizia a usare Cycle
+              </PrimaryButton>
               <button
                 type="button"
                 className="btn btn-quiet w-full"

@@ -1,3 +1,4 @@
+// Synthetic fixtures only; no personal history.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
@@ -24,7 +25,11 @@ test("ovulation is estimated from the expected period, not a fixed day 14", () =
   assert.equal(stats.averageCycleLength, 29);
   assert.ok(stats.ovulation);
   assert.equal(stats.ovulation.expected, addDays(stats.nextPeriodStart, -14));
-  assert.equal(stats.ovulation.cycleDay, 16, "expected ovulation lands on day 16");
+  assert.equal(
+    stats.ovulation.cycleDay,
+    16,
+    "expected ovulation lands on day 16",
+  );
   assert.notEqual(stats.ovulation.cycleDay, 14, "never hardcoded to day 14");
   assert.equal(stats.ovulation.basis, "recent");
 });
@@ -39,17 +44,17 @@ test("ovulation range and fertile window follow the prediction window", () => {
   const prediction = stats.prediction;
   assert.ok(prediction);
 
-  assert.equal(stats.ovulationWindows.length, 3);
-  assert.equal(stats.fertileWindows.length, 3);
+  assert.equal(stats.ovulationWindows.length, 1);
+  assert.equal(stats.fertileWindows.length, 1);
   assert.equal(stats.ovulation.start, addDays(prediction.start, -16));
   assert.equal(stats.ovulation.end, addDays(prediction.end, -12));
   // The displayed fertile window is -5/+2 around the central ovulation day.
-  assert.equal(stats.fertileWindow.start, addDays(stats.ovulation.expected, -5));
-  assert.equal(stats.fertileWindow.end, addDays(stats.ovulation.expected, 2));
-  assert.equal(diffDays(stats.fertileWindow.end, stats.fertileWindow.start), 7);
+  assert.equal(stats.fertileWindow.start, addDays(stats.ovulation.start, -5));
+  assert.equal(stats.fertileWindow.end, addDays(stats.ovulation.end, 2));
+  assert.ok(diffDays(stats.fertileWindow.end, stats.fertileWindow.start) > 7);
 });
 
-test("computed fertile windows equal the canonical -5/+2 helper for every cycle", () => {
+test("fertile calendar interval carries ovulation uncertainty on both sides", () => {
   const logs = logsFrom([
     makeLog("2026-01-01", { periodFlow: "medium" }),
     makeLog("2026-01-30", { periodFlow: "medium" }),
@@ -57,18 +62,21 @@ test("computed fertile windows equal the canonical -5/+2 helper for every cycle"
   ]);
   const stats = computeCycle({ logs, today: "2026-03-05" });
 
-  assert.equal(stats.fertileWindows.length, 3);
-  assert.equal(stats.ovulationWindows.length, 3);
+  assert.equal(stats.fertileWindows.length, 1);
+  assert.equal(stats.ovulationWindows.length, 1);
 
   for (let index = 0; index < stats.fertileWindows.length; index += 1) {
     const ovulationDay = stats.ovulationWindows[index].expected;
-    const canonical = getEstimatedFertileWindow(ovulationDay);
+    const canonical = {
+      start: addDays(stats.ovulationWindows[index].start, -5),
+      end: addDays(stats.ovulationWindows[index].end, 2),
+    };
     assert.equal(stats.fertileWindows[index].start, canonical.start);
     assert.equal(stats.fertileWindows[index].end, canonical.end);
     assert.equal(
       stats.fertileWindows[index].estimatedOvulationDay,
       ovulationDay,
-      "the window records the central estimated ovulation day"
+      "the window records the central estimated ovulation day",
     );
   }
 });
@@ -110,19 +118,23 @@ test("fertile window always contains exactly 8 days around the ovulation day", (
     assert.equal(days[days.length - 1], window.end);
 
     const centralIndex = days.indexOf(ovulationDay);
-    assert.equal(centralIndex, 5, `${ovulationDay}: five days precede ovulation`);
+    assert.equal(
+      centralIndex,
+      5,
+      `${ovulationDay}: five days precede ovulation`,
+    );
     assert.equal(
       days.length - 1 - centralIndex,
       2,
-      `${ovulationDay}: two days follow ovulation`
+      `${ovulationDay}: two days follow ovulation`,
     );
     assert.ok(
       diffDays(ovulationDay, window.start) === 5,
-      "start is exactly -5 calendar days"
+      "start is exactly -5 calendar days",
     );
     assert.ok(
       diffDays(window.end, ovulationDay) === 2,
-      "end is exactly +2 calendar days"
+      "end is exactly +2 calendar days",
     );
   }
 });
@@ -140,7 +152,10 @@ test("ovulation tracks the recorded cycle length, never a fixed day 14", () => {
   assert.equal(stats.ovulation.expected, addDays(stats.nextPeriodStart, -14));
   assert.equal(stats.ovulation.cycleDay, 17);
   assert.notEqual(stats.ovulation.cycleDay, 14, "never hardcoded to day 14");
-  assert.equal(stats.fertileWindow.estimatedOvulationDay, stats.ovulation.expected);
+  assert.equal(
+    stats.fertileWindow.estimatedOvulationDay,
+    stats.ovulation.expected,
+  );
 });
 
 test("insufficient history: initial estimate and low confidence", () => {
@@ -150,12 +165,9 @@ test("insufficient history: initial estimate and low confidence", () => {
     today: "2026-03-05",
   });
 
-  assert.ok(stats.prediction);
-  assert.equal(stats.prediction.basis, "initial");
+  assert.equal(stats.prediction, null);
   assert.equal(stats.confidence.level, "low");
-  assert.ok(stats.ovulation);
-  assert.equal(stats.ovulation.basis, "initial");
-  assert.equal(stats.ovulation.confidence.level, "low");
+  assert.equal(stats.ovulation, null);
 });
 
 test("irregular history widens the range without fake precision", () => {
@@ -168,9 +180,8 @@ test("irregular history widens the range without fake precision", () => {
 
   assert.equal(stats.cycleLengthVariability, 12.5);
   assert.equal(stats.confidence.level, "low");
-  assert.ok(stats.prediction);
-  assert.equal(diffDays(stats.prediction.end, stats.prediction.start), 12);
-  assert.equal(stats.prediction.end, addDays(stats.prediction.expected, 6));
+  assert.equal(stats.prediction, null);
+  assert.match(stats.estimateNote, /variabili/);
 });
 
 test("confidence rises with several similar cycles", () => {
@@ -226,7 +237,11 @@ test("a positive LH test is exposed as an observed signal, not a new estimate", 
     },
     today: "2026-03-10",
   });
-  assert.equal(older.latestPositiveLhTest, null, "old test outside current cycle");
+  assert.equal(
+    older.latestPositiveLhTest,
+    null,
+    "old test outside current cycle",
+  );
 });
 
 test("ovulation copy always sounds like an estimate", () => {
@@ -242,14 +257,14 @@ test("ovulation copy always sounds like an estimate", () => {
 
   const tomorrow = describeOvulation(
     stats.ovulation,
-    addDays(stats.ovulation.expected, -1)
+    addDays(stats.ovulation.expected, -1),
   );
   assert.match(tomorrow, /domani/i);
   assert.doesNotMatch(tomorrow, /conferm|sicur|cert/i);
 
   const passed = describeOvulation(
     stats.ovulation,
-    addDays(stats.ovulation.expected, 9)
+    addDays(stats.ovulation.expected, 9),
   );
   assert.match(passed, /stima/i);
 });

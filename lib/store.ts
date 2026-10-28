@@ -1,125 +1,156 @@
 "use client";
-
 import { useMemo, useSyncExternalStore } from "react";
 import type { CycleData, DailyLog, Onboarding, Settings } from "@/types";
-import { EMPTY_STATS, computeCycle, type CycleStats } from "./cycle";
+import { EMPTY_STATS, computeCycle } from "./cycle";
 import { todayKey } from "./dates";
-import { applyHistoricalImport, hasImportedHistory, type ImportReport } from "./history";
-import { clearData, emptyData, loadData, saveData } from "./storage";
-import { mergeBackup, type MergeReport } from "./backup";
-
-/**
- * One tiny external store for the whole app.
- *
- * localStorage is the source of truth; React subscribes to it through
- * `useSyncExternalStore`, so every screen reads the same data and a save
- * updates the UI and the device in one step. No library, no context tree.
- */
-
+import {
+  clearData,
+  emptyData,
+  readStorage,
+  saveData,
+  type StorageRead,
+  type WriteResult,
+} from "./storage";
+import { mergeBackup } from "./backup";
+export type LogDraft = Omit<DailyLog, "date" | "createdAt" | "updatedAt">;
 interface Snapshot {
   data: CycleData;
-  /** False until localStorage has been read on the client. */
   hydrated: boolean;
-  /** Today's date key. Empty during the server render. */
   today: string;
-  /** Greeting for the current part of the day. Empty during SSR. */
   greeting: string;
+  storageStatus: StorageRead["status"];
+  raw: string | null;
+  error: string;
+  drafts: Record<string, LogDraft>;
+  draftBases: Record<string, string>;
 }
-
-const SERVER_SNAPSHOT: Snapshot = {
+const server: Snapshot = {
   data: emptyData(),
   hydrated: false,
   today: "",
-  greeting: "",
+  greeting: "Ciao",
+  storageStatus: "empty",
+  raw: null,
+  error: "",
+  drafts: {},
+  draftBases: {},
 };
-
-/** Computed from the clock, but only outside render (hydration event). */
-function greetingForNow(): string {
-  const hour = new Date().getHours();
-  if (hour < 5) return "Buonanotte";
-  if (hour < 12) return "Buongiorno";
-  if (hour < 18) return "Buon pomeriggio";
-  return "Buonasera";
-}
-
-let snapshot: Snapshot = SERVER_SNAPSHOT;
-let currentData: CycleData = snapshot.data;
+let state = server;
 const listeners = new Set<() => void>();
-
-function commit(data: CycleData, persist = true) {
-  currentData = data;
-  snapshot = { ...snapshot, data };
-  if (persist) saveData(data);
-  listeners.forEach((listener) => listener());
+const emit = () => listeners.forEach((fn) => fn());
+let scheduled = false;
+function refresh() {
+  const result = readStorage();
+  state = {
+    ...state,
+    ...result,
+    storageStatus: result.status,
+    hydrated: true,
+    today: todayKey(),
+  };
+  emit();
 }
-
-let hydrationScheduled = false;
-let dayWatcherInstalled = false;
-
-/**
- * Keeps "today" honest when the app stays open past midnight or comes back
- * from the background. Runs in an event handler, never during render.
- */
-function installDayWatcher() {
-  if (dayWatcherInstalled || typeof document === "undefined") return;
-  dayWatcherInstalled = true;
+function init() {
+  if (scheduled || typeof window === "undefined") return;
+  scheduled = true;
+  queueMicrotask(refresh);
+  window.addEventListener("beforeunload", (event) => {
+    if (Object.keys(state.drafts).length) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === "cycle.v1" || event.key === null) refresh();
+  });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible" || !snapshot.hydrated) return;
-    const today = todayKey();
-    if (today === snapshot.today) return;
-    snapshot = { ...snapshot, today, greeting: greetingForNow() };
-    listeners.forEach((listener) => listener());
+    if (document.visibilityState === "visible") refresh();
   });
 }
-
-/** Reading storage happens outside of render so the HTML stays stable. */
-function ensureHydrated() {
-  if (snapshot.hydrated || hydrationScheduled) return;
-  if (typeof window === "undefined") return;
-  hydrationScheduled = true;
-  const run = () => {
-    currentData = loadData();
-    snapshot = {
-      data: currentData,
-      hydrated: true,
-      today: todayKey(),
-      greeting: greetingForNow(),
+function commit(data: CycleData): WriteResult {
+  if (
+    state.storageStatus === "corrupt" ||
+    state.storageStatus === "unavailable"
+  )
+    return fail({ ok: false, reason: "storage" });
+  const result = saveData(data, state.raw);
+  if (!result.ok) {
+    if (result.reason === "conflict") refresh();
+    return fail(result);
+  }
+  state = {
+    ...state,
+    data,
+    raw: JSON.stringify(data),
+    storageStatus: "ok",
+    error: "",
+  };
+  emit();
+  return result;
+}
+function fail(result: WriteResult): WriteResult {
+  state = {
+    ...state,
+    error:
+      !result.ok && result.reason === "conflict"
+        ? "I dati sono cambiati in un’altra scheda. La bozza è qui: controlla e riprova."
+        : "Non sono riuscita a salvare. I dati e la bozza restano qui: riprova.",
+  };
+  emit();
+  return result;
+}
+export function setDraft(date: string, draft: LogDraft, base?: string) {
+  state = {
+    ...state,
+    drafts: { ...state.drafts, [date]: draft },
+    draftBases: {
+      ...state.draftBases,
+      [date]:
+        state.draftBases[date] ??
+        base ??
+        JSON.stringify(state.data.logs[date] ?? null),
+    },
+  };
+  emit();
+}
+export function discardDraft(date: string) {
+  const drafts = { ...state.drafts };
+  const draftBases = { ...state.draftBases };
+  delete drafts[date];
+  delete draftBases[date];
+  state = { ...state, drafts, draftBases };
+  emit();
+}
+export function saveLog(
+  date: string,
+  draft: LogDraft,
+  replaceChangedDay = false,
+) {
+  const latest = readStorage();
+  if (latest.raw !== state.raw) refresh();
+  const existing = state.data.logs[date];
+  if (
+    state.draftBases[date] !== undefined &&
+    state.draftBases[date] !== JSON.stringify(existing ?? null) &&
+    !replaceChangedDay
+  ) {
+    state = {
+      ...state,
+      error:
+        "Questa giornata è cambiata in un’altra scheda. Controlla la versione salvata prima di sostituirla.",
     };
-    installDayWatcher();
-    listeners.forEach((listener) => listener());
-  };
-  if (typeof queueMicrotask === "function") queueMicrotask(run);
-  else setTimeout(run, 0);
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  ensureHydrated();
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function getSnapshot() {
-  ensureHydrated();
-  return snapshot;
-}
-
-function getServerSnapshot() {
-  return SERVER_SNAPSHOT;
-}
-
-/* ----------------------------- actions ----------------------------- */
-
-export type LogDraft = Omit<DailyLog, "date" | "createdAt" | "updatedAt">;
-
-export function saveLog(date: string, draft: LogDraft) {
-  const existing = currentData.logs[date];
+    emit();
+    return { ok: false, reason: "conflict" } as WriteResult;
+  }
+  const backupConflicts = { ...state.data.backupConflicts };
+  if (replaceChangedDay && existing)
+    backupConflicts[date] = [...(backupConflicts[date] ?? []), existing];
   const now = new Date().toISOString();
-  commit({
-    ...currentData,
+  const result = commit({
+    ...state.data,
+    backupConflicts,
     logs: {
-      ...currentData.logs,
+      ...state.data.logs,
       [date]: {
         ...draft,
         date,
@@ -128,17 +159,19 @@ export function saveLog(date: string, draft: LogDraft) {
       },
     },
   });
+  if (result.ok) discardDraft(date);
+  return result;
 }
-
 export function deleteLog(date: string) {
-  const logs = { ...currentData.logs };
+  const logs = { ...state.data.logs };
   delete logs[date];
-  commit({ ...currentData, logs });
+  const r = commit({ ...state.data, logs });
+  if (r.ok) discardDraft(date);
+  return r;
 }
-
 export function finishOnboarding(onboarding: Onboarding) {
-  commit({
-    ...currentData,
+  return commit({
+    ...state.data,
     onboarding,
     settings: {
       averageCycleLength: onboarding.cycleLength ?? 28,
@@ -146,79 +179,68 @@ export function finishOnboarding(onboarding: Onboarding) {
     },
   });
 }
-
 export function updateSettings(settings: Partial<Settings>) {
-  commit({ ...currentData, settings: { ...currentData.settings, ...settings } });
+  return commit({
+    ...state.data,
+    settings: { ...state.data.settings, ...settings },
+  });
 }
-
+export function updateProfile(lastPeriodStart: string | null) {
+  return commit({
+    ...state.data,
+    onboarding: { ...state.data.onboarding, lastPeriodStart },
+  });
+}
 export function resetAll() {
-  clearData();
-  commit(emptyData(), false);
+  const r = clearData(state.raw);
+  if (!r.ok) return fail(r);
+  state = { ...server, hydrated: true, today: todayKey() };
+  emit();
+  return r;
 }
-
-/** One-time history migration. Safe to call more than once. */
-export function importHistory(): ImportReport {
-  const result = applyHistoricalImport(currentData);
-  if (result.ok && !result.report.alreadyImported) {
-    commit(result.data);
-  }
-  return result.report;
+export function restoreBackup(incoming: CycleData, preferIncoming = false) {
+  const merged = mergeBackup(state.data, incoming, preferIncoming);
+  // Corrupt original stays untouched until explicitly reset; import is available afterwards.
+  const result = commit(merged.data);
+  return { ...merged.report, ok: result.ok };
 }
-
-/**
- * Restores a validated backup. Existing days are never overwritten: only the
- * dates missing on this device are added.
- */
-export function restoreBackup(incoming: CycleData): MergeReport {
-  const { data, report } = mergeBackup(currentData, incoming);
-  commit(data);
-  return report;
-}
-
-/* ------------------------------ hooks ------------------------------ */
-
-export interface CycleStore extends Snapshot {
-  stats: CycleStats;
-  logCount: number;
-  /** True once the one-time historical import has been applied. */
-  historyImported: boolean;
-  saveLog: typeof saveLog;
-  deleteLog: typeof deleteLog;
-  finishOnboarding: typeof finishOnboarding;
-  updateSettings: typeof updateSettings;
-  resetAll: typeof resetAll;
-  importHistory: typeof importHistory;
-  restoreBackup: typeof restoreBackup;
-}
-
-export function useStore(): CycleStore {
-  const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-
+export function useStore() {
+  const snapshot = useSyncExternalStore(
+    (fn) => {
+      listeners.add(fn);
+      init();
+      return () => {
+        listeners.delete(fn);
+      };
+    },
+    () => state,
+    () => server,
+  );
   const stats = useMemo(
     () =>
-      state.today
+      snapshot.today
         ? computeCycle({
-            logs: state.data.logs,
-            lastPeriodStart: state.data.onboarding.lastPeriodStart,
-            averageCycleLength: state.data.settings.averageCycleLength,
-            averagePeriodLength: state.data.settings.averagePeriodLength,
-            today: state.today,
+            logs: snapshot.data.logs,
+            lastPeriodStart: snapshot.data.onboarding.lastPeriodStart,
+            averageCycleLength: snapshot.data.settings.averageCycleLength,
+            averagePeriodLength: snapshot.data.settings.averagePeriodLength,
+            today: snapshot.today,
           })
         : EMPTY_STATS,
-    [state]
+    [snapshot.data, snapshot.today],
   );
-
   return {
-    ...state,
+    ...snapshot,
     stats,
-    logCount: Object.keys(state.data.logs).length,
-    historyImported: hasImportedHistory(state.data),
+    logCount: Object.keys(snapshot.data.logs).length,
     saveLog,
     deleteLog,
     finishOnboarding,
     updateSettings,
+    updateProfile,
     resetAll,
-    importHistory,
     restoreBackup,
+    setDraft,
+    discardDraft,
   };
 }

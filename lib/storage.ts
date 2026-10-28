@@ -75,19 +75,19 @@ function sanitizeLog(value: unknown, date: string): DailyLog | null {
       : null;
 
   const sexualActivity = SEXUAL_ACTIVITY_IDS.includes(
-    raw.sexualActivity as SexualActivity
+    raw.sexualActivity as SexualActivity,
   )
     ? (raw.sexualActivity as SexualActivity)
     : undefined;
 
   const ovulationTest = OVULATION_TEST_IDS.includes(
-    raw.ovulationTest as OvulationTestResult
+    raw.ovulationTest as OvulationTestResult,
   )
     ? (raw.ovulationTest as OvulationTestResult)
     : undefined;
 
   const cervicalMucus = CERVICAL_MUCUS_IDS.includes(
-    raw.cervicalMucus as CervicalMucus
+    raw.cervicalMucus as CervicalMucus,
   )
     ? (raw.cervicalMucus as CervicalMucus)
     : undefined;
@@ -95,6 +95,8 @@ function sanitizeLog(value: unknown, date: string): DailyLog | null {
   return {
     date,
     periodFlow: flow,
+    ...(raw.flowRecorded === true ? { flowRecorded: true } : {}),
+    ...(raw.symptomsRecorded === true ? { symptomsRecorded: true } : {}),
     moods: uniqueIds<MoodId>(raw.moods, MOOD_IDS),
     symptoms: uniqueIds<SymptomId>(raw.symptoms, SYMPTOM_IDS),
     energy,
@@ -104,9 +106,13 @@ function sanitizeLog(value: unknown, date: string): DailyLog | null {
     ...(ovulationTest ? { ovulationTest } : {}),
     ...(cervicalMucus ? { cervicalMucus } : {}),
     createdAt:
-      typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString(),
+      typeof raw.createdAt === "string"
+        ? raw.createdAt
+        : new Date().toISOString(),
     updatedAt:
-      typeof raw.updatedAt === "string" ? raw.updatedAt : new Date().toISOString(),
+      typeof raw.updatedAt === "string"
+        ? raw.updatedAt
+        : new Date().toISOString(),
   };
 }
 
@@ -131,11 +137,11 @@ function sanitizeOnboarding(value: unknown): Onboarding {
       : null,
     cycleLength:
       typeof raw.cycleLength === "number"
-        ? asNumber(raw.cycleLength, 28, 20, 45)
+        ? asNumber(raw.cycleLength, 28, 15, 90)
         : null,
     periodLength:
       typeof raw.periodLength === "number"
-        ? asNumber(raw.periodLength, 5, 1, 10)
+        ? asNumber(raw.periodLength, 5, 1, 15)
         : null,
   };
 }
@@ -154,15 +160,15 @@ export function sanitizeData(value: unknown): CycleData {
 
   const settings = (raw.settings ?? {}) as Record<string, unknown>;
   data.settings = {
-    averageCycleLength: asNumber(settings.averageCycleLength, 28, 20, 45),
-    averagePeriodLength: asNumber(settings.averagePeriodLength, 5, 1, 10),
+    averageCycleLength: asNumber(settings.averageCycleLength, 28, 15, 90),
+    averagePeriodLength: asNumber(settings.averagePeriodLength, 5, 1, 15),
   };
 
   data.imports = sanitizeImports(raw.imports);
 
   if (raw.logs && typeof raw.logs === "object") {
     for (const [date, log] of Object.entries(
-      raw.logs as Record<string, unknown>
+      raw.logs as Record<string, unknown>,
     )) {
       if (!isValidKey(date)) continue;
       const clean = sanitizeLog(log, date);
@@ -170,37 +176,136 @@ export function sanitizeData(value: unknown): CycleData {
     }
   }
 
+  if (raw.backupConflicts && typeof raw.backupConflicts === "object") {
+    data.backupConflicts = {};
+    for (const [date, versions] of Object.entries(
+      raw.backupConflicts as Record<string, unknown>,
+    )) {
+      if (isValidKey(date) && Array.isArray(versions))
+        data.backupConflicts[date] = versions
+          .map((v) => sanitizeLog(v, date))
+          .filter((v): v is DailyLog => Boolean(v));
+    }
+  }
   return data;
 }
 
-/** Never throws: a broken payload falls back to a clean, empty state. */
+export type StorageRead =
+  | { status: "ok" | "empty"; data: CycleData; raw: string | null }
+  | { status: "corrupt" | "unavailable"; data: CycleData; raw: string | null };
+
+/** Validation at the persistence boundary: reject corruption instead of losing fields. */
+export function isReadableLog(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    PERIOD_FLOW_IDS.includes(v.periodFlow as PeriodFlow) &&
+    Array.isArray(v.moods) &&
+    v.moods.every((id) => MOOD_IDS.includes(id)) &&
+    Array.isArray(v.symptoms) &&
+    v.symptoms.every((id) => SYMPTOM_IDS.includes(id)) &&
+    (v.energy === null ||
+      (typeof v.energy === "number" &&
+        Number.isInteger(v.energy) &&
+        v.energy >= 1 &&
+        v.energy <= 5)) &&
+    typeof v.notes === "string" &&
+    v.notes.length <= 600 &&
+    (v.sexualActivity === undefined ||
+      SEXUAL_ACTIVITY_IDS.includes(v.sexualActivity as SexualActivity)) &&
+    (v.ovulationTest === undefined ||
+      OVULATION_TEST_IDS.includes(v.ovulationTest as OvulationTestResult)) &&
+    (v.cervicalMucus === undefined ||
+      CERVICAL_MUCUS_IDS.includes(v.cervicalMucus as CervicalMucus))
+  );
+}
+
+export function readStorage(): StorageRead {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw === null) return { status: "empty", data: emptyData(), raw };
+    const value = JSON.parse(raw);
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      value.version !== 1 ||
+      !value.logs ||
+      typeof value.logs !== "object" ||
+      Array.isArray(value.logs)
+    )
+      throw Error();
+    // Refuse lossy recovery: keep the original until the person exports or resets it.
+    for (const [date, log] of Object.entries(value.logs)) {
+      if (!isValidKey(date) || !isReadableLog(log)) throw Error();
+    }
+    if (value.backupConflicts !== undefined) {
+      if (
+        !value.backupConflicts ||
+        typeof value.backupConflicts !== "object" ||
+        Array.isArray(value.backupConflicts)
+      )
+        throw Error();
+      for (const [date, versions] of Object.entries(value.backupConflicts)) {
+        if (
+          !isValidKey(date) ||
+          !Array.isArray(versions) ||
+          !versions.every(isReadableLog)
+        )
+          throw Error();
+      }
+    }
+    return { status: "ok", data: sanitizeData(value), raw };
+  } catch {
+    return {
+      status: raw === null ? "unavailable" : "corrupt",
+      data: emptyData(),
+      raw,
+    };
+  }
+}
+
 export function loadData(): CycleData {
-  if (typeof window === "undefined") return emptyData();
+  return typeof window === "undefined" ? emptyData() : readStorage().data;
+}
+export type WriteResult =
+  { ok: true } | { ok: false; reason: "storage" | "conflict" };
+
+/** Compare before write: a stale tab must not overwrite a newer document. */
+export function saveData(
+  data: CycleData,
+  expectedRaw?: string | null,
+): WriteResult {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyData();
-    return sanitizeData(JSON.parse(raw));
+    const storage = window.localStorage;
+    if (
+      expectedRaw !== undefined &&
+      storage.getItem(STORAGE_KEY) !== expectedRaw
+    )
+      return { ok: false, reason: "conflict" };
+    const raw = JSON.stringify(data);
+    storage.setItem(STORAGE_KEY, raw);
+    return storage.getItem(STORAGE_KEY) === raw
+      ? { ok: true }
+      : { ok: false, reason: "storage" };
   } catch {
-    return emptyData();
+    return { ok: false, reason: "storage" };
   }
 }
-
-export function saveData(data: CycleData): void {
-  if (typeof window === "undefined") return;
+export function clearData(expectedRaw?: string | null): WriteResult {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    // Storage full or blocked: the app keeps working in memory.
-  }
-}
-
-export function clearData(): void {
-  if (typeof window === "undefined") return;
-  try {
+    if (
+      expectedRaw !== undefined &&
+      window.localStorage.getItem(STORAGE_KEY) !== expectedRaw
+    )
+      return { ok: false, reason: "conflict" };
     window.localStorage.removeItem(STORAGE_KEY);
+    return window.localStorage.getItem(STORAGE_KEY) === null
+      ? { ok: true }
+      : { ok: false, reason: "storage" };
   } catch {
-    // nothing to do
+    return { ok: false, reason: "storage" };
   }
 }
-
 export { DEFAULT_SETTINGS };

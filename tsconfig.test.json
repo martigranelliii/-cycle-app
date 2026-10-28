@@ -18,7 +18,6 @@
     "lib/labels.ts",
     "lib/storage.ts",
     "lib/backup.ts",
-    "lib/history.ts",
     "lib/wellness.ts",
     "types/index.ts"
   ]

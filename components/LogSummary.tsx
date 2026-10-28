@@ -44,9 +44,7 @@ function EnergyDots({ energy }: { energy: number }) {
 
 export function LogSummary({ log }: { log: DailyLog }) {
   const moods = log.moods.map((id) => labelFor(MOODS, id)).join(" · ");
-  const symptoms = log.symptoms
-    .map((id) => labelFor(SYMPTOMS, id))
-    .join(" · ");
+  const symptoms = log.symptoms.map((id) => labelFor(SYMPTOMS, id)).join(" · ");
   const note = log.notes.trim();
 
   const hasDetail =
@@ -54,6 +52,8 @@ export function LogSummary({ log }: { log: DailyLog }) {
     log.symptoms.length > 0 ||
     log.energy !== null ||
     log.periodFlow !== "none" ||
+    log.flowRecorded === true ||
+    log.symptomsRecorded === true ||
     Boolean(log.spotting) ||
     Boolean(log.ovulationTest) ||
     Boolean(log.cervicalMucus) ||
@@ -70,7 +70,7 @@ export function LogSummary({ log }: { log: DailyLog }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {log.periodFlow !== "none" ? (
+      {log.periodFlow !== "none" || log.flowRecorded ? (
         <Row label="Flusso">
           {log.periodFlow === "recorded" ? (
             <span className="text-plum-soft">{flowLabel(log.periodFlow)}</span>
@@ -97,9 +97,11 @@ export function LogSummary({ log }: { log: DailyLog }) {
         </Row>
       ) : null}
 
-      {log.symptoms.length > 0 ? (
+      {log.symptoms.length > 0 || log.symptomsRecorded ? (
         <Row label="Sintomi">
-          <span className="display-sm text-[16px]">{symptoms}</span>
+          <span className="display-sm text-[16px]">
+            {symptoms || "Nessun sintomo"}
+          </span>
         </Row>
       ) : null}
 
