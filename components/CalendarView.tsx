@@ -1,23 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { cycleDayFor, estimatePhase, predictedDays } from "@/lib/cycle";
+import { cycleDayFor } from "@/lib/cycle";
 import {
   WEEKDAYS,
-  addDays,
-  diffDays,
   formatLong,
+  formatRange,
   formatWithWeekday,
   monthKey,
   monthTitle,
   monthWeeks,
   shiftMonth,
 } from "@/lib/dates";
-import { PHASES, hasSexualActivity } from "@/lib/labels";
+import { hasSexualActivity } from "@/lib/labels";
 import { LogSummary } from "./LogSummary";
-import { Card, GhostButton, PrimaryButton, Screen, SectionTitle } from "./ui";
+import { Card, GhostButton, PrimaryButton, Screen } from "./ui";
 import { IconChevronLeft, IconHeart } from "./icons";
 
 export function CalendarView({
@@ -34,98 +32,37 @@ export function CalendarView({
   onRegister: (date: string) => void;
 }) {
   const { data, stats, today } = useStore();
-  const [layers, setLayers] = useState(false);
-
+  const [showActivity, setShowActivity] = useState(false);
+  const detailRef = useRef<HTMLElement>(null);
   const weeks = useMemo(() => monthWeeks(month), [month]);
   const periodSet = useMemo(
     () => new Set(stats.periodDays),
     [stats.periodDays],
   );
-  const predictedSet = useMemo(() => new Set(predictedDays(stats)), [stats]);
-  const windowSet = useMemo(() => {
-    const days = new Set<string>();
-    const prediction = stats.prediction;
-    if (!prediction) return days;
-    const total = diffDays(prediction.end, prediction.start);
-    for (let offset = 0; offset <= total; offset += 1) {
-      days.add(addDays(prediction.start, offset));
-    }
-    return days;
-  }, [stats.prediction]);
-  const fertileSet = useMemo(() => {
-    const days = new Set<string>();
-    for (const window of stats.fertileWindows) {
-      const total = diffDays(window.end, window.start);
-      for (let offset = 0; offset <= total; offset += 1) {
-        days.add(addDays(window.start, offset));
-      }
-    }
-    return days;
-  }, [stats.fertileWindows]);
-  const ovulationRangeSet = useMemo(() => {
-    const days = new Set<string>();
-    for (const window of stats.ovulationWindows) {
-      const total = diffDays(window.end, window.start);
-      for (let offset = 0; offset <= total; offset += 1) {
-        days.add(addDays(window.start, offset));
-      }
-    }
-    return days;
-  }, [stats.ovulationWindows]);
-  const ovulationSet = useMemo(
-    () => new Set(stats.ovulationWindows.map((window) => window.expected)),
-    [stats.ovulationWindows],
-  );
-
-  const selectedLog = data.logs[selected] ?? null;
+  const prediction = stats.prediction;
+  const fertile = stats.fertileWindow;
+  const ovulation = stats.ovulation;
+  const inside = (day: string, range: { start: string; end: string } | null) =>
+    Boolean(range && day >= range.start && day <= range.end);
+  const selectedLog = data.logs[selected];
+  const isFuture = selected > today;
+  const cycleDay = isFuture ? null : cycleDayFor(selected, stats);
   const episode = stats.periods.find(
     (p) => selected >= p.start && selected <= p.end,
   );
-  const isFuture = diffDays(selected, today) > 0;
-  const isCurrentMonth = monthKey(month) === monthKey(today);
-  const selectedDay = cycleDayFor(selected, stats);
-  const selectedPredicted =
-    predictedSet.has(selected) && !periodSet.has(selected);
-  const selectedInWindow =
-    windowSet.has(selected) && !selectedPredicted && !periodSet.has(selected);
-  const selectedInFertile = layers && fertileSet.has(selected);
-  const selectedInOvulationRange = layers && ovulationRangeSet.has(selected);
-  const selectedIsOvulationExpected = layers && ovulationSet.has(selected);
-  const selectedPhase =
-    selectedDay !== null
-      ? estimatePhase(
-          selectedDay,
-          stats.averageCycleLength,
-          stats.averagePeriodLength,
-        )
-      : null;
-
-  const subtitle = selectedDay
-    ? `Giorno ${selectedDay} del ciclo`
-    : selectedInFertile
-      ? "Finestra fertile stimata"
-      : selectedPredicted
-        ? "Periodo previsto · stima"
-        : selectedInWindow
-          ? "Finestra probabile del prossimo ciclo"
-          : "Fuori dal ciclo registrato";
-
+  const selectedFertile = inside(selected, fertile);
+  const selectedPredicted = inside(selected, prediction);
   return (
-    <Screen className="pb-32">
-      <header className="mb-6 flex items-end justify-between">
-        <div>
-          <h1 className="display text-[30px] leading-tight">
-            {monthTitle(month)}
-          </h1>
-          <p className="mt-1.5 text-[13px] text-muted">
-            Il tuo diario, giorno per giorno.
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
+    <Screen className="calendar-screen pb-28">
+      <header className="calendar-header">
+        <h1 className="display text-[28px] leading-tight">
+          {monthTitle(month)}
+        </h1>
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             aria-label="Mese precedente"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-soft text-plum-soft transition-colors"
+            className="calendar-month-button"
             onClick={() => onMonthChange(shiftMonth(month, -1))}
           >
             <IconChevronLeft className="h-4 w-4" />
@@ -133,299 +70,211 @@ export function CalendarView({
           <button
             type="button"
             aria-label="Mese successivo"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-soft text-plum-soft transition-colors"
+            className="calendar-month-button"
             onClick={() => onMonthChange(shiftMonth(month, 1))}
           >
             <IconChevronLeft className="h-4 w-4 rotate-180" />
           </button>
         </div>
       </header>
-
-      <button
-        type="button"
-        className="mb-3 min-h-11 text-sm text-muted"
-        aria-expanded={layers}
-        onClick={() => setLayers(!layers)}
-      >
-        {layers
-          ? "Nascondi dettagli facoltativi"
-          : "Mostra stime di ovulazione e rapporti"}
-      </button>
-      <Card className="p-2.5">
-        <div className="grid grid-cols-7">
-          {WEEKDAYS.map((weekday, index) => (
-            <span
-              key={`${weekday}-${index}`}
-              className="label-xs py-2 text-center"
-            >
-              {weekday}
-            </span>
+      <div className="card calendar-shell">
+        <div className="calendar-weekdays" aria-hidden>
+          {WEEKDAYS.map((day, i) => (
+            <span key={i}>{day}</span>
           ))}
         </div>
-
-        <div className="grid grid-cols-7 gap-y-1">
-          {weeks.flat().map((day, index) => {
-            if (!day) return <span key={`empty-${index}`} />;
-
-            const isPeriod = periodSet.has(day);
-            const isPredicted = !isPeriod && predictedSet.has(day);
-            const inWindow = !isPeriod && !isPredicted && windowSet.has(day);
-            const isFertile =
-              layers &&
-              !isPeriod &&
-              !isPredicted &&
-              !inWindow &&
-              fertileSet.has(day);
+        <div
+          className="calendar-days"
+          role="group"
+          aria-label={`Giorni di ${monthTitle(month)}`}
+        >
+          {weeks.flat().map((day, i) => {
+            if (!day) return <span key={`empty-${i}`} aria-hidden />;
+            const period = periodSet.has(day);
+            const predicted = !period && inside(day, prediction);
+            const isFertile = !period && inside(day, fertile);
+            const isOvulation = ovulation?.expected === day;
             const hasLog = Boolean(data.logs[day]);
-            const isToday = day === today;
-            const isSelected = day === selected;
-            const hasActivity =
-              layers && hasSexualActivity(data.logs[day]?.sexualActivity);
-            const isOvulation = layers && ovulationSet.has(day);
-            const showLogDot = hasLog && !isPeriod && !isSelected;
-
-            const background = isPeriod
-              ? "var(--rose-soft)"
-              : inWindow
-                ? "var(--peach-soft)"
-                : isFertile
-                  ? "var(--sage-soft)"
-                  : "transparent";
-            const border = isToday
-              ? "1px solid var(--rose-deep)"
-              : isPredicted
-                ? "1px dashed var(--rose-deep)"
-                : "1px solid transparent";
-
+            const activity =
+              showActivity && hasSexualActivity(data.logs[day]?.sexualActivity);
             const label = [
               formatLong(day),
-              isPeriod ? "mestruazioni registrate" : "",
-              isPredicted ? "periodo previsto" : "",
-              inWindow ? "finestra probabile del ciclo" : "",
+              period ? "mestruazioni registrate" : "",
+              predicted ? "inizio mestruazioni stimato" : "",
               isFertile ? "finestra fertile stimata" : "",
               isOvulation ? "ovulazione stimata" : "",
               hasLog ? "giorno registrato" : "",
-              hasActivity ? "rapporto registrato" : "",
+              activity ? "rapporto registrato" : "",
             ]
               .filter(Boolean)
               .join(", ");
-
             return (
               <button
-                key={day}
                 type="button"
-                onClick={() => onSelect(day)}
+                key={day}
+                data-date={day}
+                className="calendar-day"
+                data-period={period || undefined}
+                data-predicted={predicted || undefined}
+                data-fertile={isFertile || undefined}
+                data-selected={selected === day || undefined}
+                data-today={today === day || undefined}
                 aria-label={label}
-                aria-pressed={isSelected}
-                className={`day-button relative mx-auto flex aspect-square w-full max-w-11 flex-col items-center justify-center rounded-full text-[15px] ${
-                  isSelected ? "day-selected" : ""
-                }`}
-                style={
-                  isSelected
-                    ? undefined
-                    : {
-                        background,
-                        border,
-                        color: "var(--plum)",
-                      }
-                }
+                aria-pressed={selected === day}
+                aria-current={day === today ? "date" : undefined}
+                onClick={() => {
+                  onSelect(day);
+                  requestAnimationFrame(() =>
+                    detailRef.current?.scrollIntoView({
+                      block: "nearest",
+                      behavior: "auto",
+                    }),
+                  );
+                }}
               >
-                {day.slice(-2).replace(/^0/, "")}
-                {isOvulation && !isSelected ? (
-                  <span
-                    aria-hidden
-                    className="absolute top-[3px] h-[4px] w-[4px] rounded-full"
-                    style={{ background: "var(--sage)" }}
-                  />
+                <span>{Number(day.slice(-2))}</span>
+                {isOvulation ? (
+                  <span className="calendar-ovulation-dot" aria-hidden />
                 ) : null}
-                {showLogDot || hasActivity ? (
-                  <span
-                    aria-hidden
-                    className="absolute bottom-[3px] flex h-[10px] items-center gap-[3px]"
-                  >
-                    {showLogDot ? (
-                      <span
-                        className="h-[4px] w-[4px] rounded-full"
-                        style={{
-                          background: isSelected
-                            ? "var(--rose-soft)"
-                            : "var(--muted-very)",
-                        }}
-                      />
-                    ) : null}
-                    {hasActivity ? (
-                      <span
-                        className="shrink-0"
-                        style={{
-                          color: isSelected
-                            ? "var(--rose-soft)"
-                            : "var(--rose-deep)",
-                        }}
-                      >
-                        <IconHeart className="h-[9px] w-[9px]" />
-                      </span>
-                    ) : null}
+                {hasLog || activity ? (
+                  <span className="calendar-day-marks" aria-hidden>
+                    {hasLog ? <span className="calendar-log-dot" /> : null}
+                    {activity ? <IconHeart className="h-2.5 w-2.5" /> : null}
                   </span>
                 ) : null}
               </button>
             );
           })}
         </div>
-
-        <div className="divider my-3" />
-
-        <div className="flex flex-wrap gap-3 px-1 pb-1 text-sm text-muted">
-          <Legend
-            swatch={<span className="h-3 w-3 rounded-full bg-rose-soft" />}
-            label="Mestruazioni registrate"
-          />
-          <Legend
-            swatch={<span className="h-3 w-3 rounded-full bg-peach-soft" />}
-            label="Intervallo stimato"
-          />
-          <span>• Giorno registrato · Bordo: oggi</span>
-          {layers ? (
-            <span>Salvia: stime di ovulazione/fertilità · ♥ Rapporti</span>
-          ) : null}
+        <div className="calendar-legend">
+          <span>
+            <i className="bg-rose-soft" />
+            Mestruazioni
+          </span>
+          <span>
+            <i className="bg-sage-soft" />
+            Finestra fertile stimata
+          </span>
+          <span>
+            <i className="calendar-legend-prediction" />
+            Inizio stimato
+          </span>
+          <span>• Registrazione · Bordo: oggi</span>
         </div>
-      </Card>
-
-      {!isCurrentMonth ? (
-        <button
-          type="button"
-          className="mx-auto mt-4 block text-[13px] text-muted underline decoration-[rgba(53,24,42,0.28)] underline-offset-4"
-          onClick={() => {
-            onMonthChange(`${monthKey(today)}-01`);
-            onSelect(today);
-          }}
-        >
-          Torna al mese corrente
-        </button>
-      ) : null}
-
-      <section className="mt-8">
-        <SectionTitle>
-          {isFuture ? "Giorno futuro" : "Giorno selezionato"}
-        </SectionTitle>
-        <Card>
-          <div className="mb-5">
-            <p className="display text-[21px] leading-tight">
-              {formatWithWeekday(selected)}{" "}
-              <span className="text-[14px] text-muted">
-                {selected.slice(0, 4)}
-              </span>
+      </div>
+      <div className="calendar-toolbar">
+        <label className="flex min-h-11 items-center gap-2 text-[13px] text-muted">
+          <input
+            type="checkbox"
+            checked={showActivity}
+            onChange={(e) => setShowActivity(e.target.checked)}
+          />
+          Mostra rapporti
+        </label>
+        {monthKey(month) !== monthKey(today) || selected !== today ? (
+          <button
+            type="button"
+            className="min-h-11 text-[13px] text-rose-deep"
+            onClick={() => {
+              onMonthChange(`${monthKey(today)}-01`);
+              onSelect(today);
+            }}
+          >
+            Torna a oggi
+          </button>
+        ) : null}
+      </div>
+      <div className="calendar-dates">
+        {prediction ? (
+          <div>
+            <p>Prossime mestruazioni · stima</p>
+            <p className="display-sm">
+              {formatRange(prediction.start, prediction.end)}
             </p>
-            <p className="mt-1.5 text-[12px] text-muted">{subtitle}</p>
           </div>
-
-          {stats.hasPeriodData && layers ? (
-            <div className="mb-6 flex flex-col gap-4 border-b border-line-light pb-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1">
-                  <span className="label-xs">Ciclo</span>
-                  <span className="text-[15px] leading-snug text-plum">
-                    {selectedDay ? `Giorno ${selectedDay}` : "—"}
-                  </span>
-                  <span className="text-[12px] leading-relaxed text-muted">
-                    {selectedPhase
-                      ? `${PHASES[selectedPhase].label} stimata`
-                      : "Fuori dal ciclo registrato"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="label-xs">Ovulazione</span>
-                  <span className="text-[15px] leading-snug text-plum">
-                    {selectedIsOvulationExpected
-                      ? "Stimata"
-                      : selectedInOvulationRange
-                        ? "Nella finestra"
-                        : "—"}
-                  </span>
-                  <span className="text-[12px] leading-relaxed text-muted">
-                    {selectedInOvulationRange
-                      ? "Stima, non conferma"
-                      : "Fuori dalla finestra stimata"}
-                  </span>
-                </div>
-              </div>
-              {selectedInFertile ? (
-                <p className="text-[12.5px] leading-relaxed text-sage">
-                  Finestra fertile stimata. È una stima e non va usata come
-                  metodo contraccettivo.
-                </p>
-              ) : null}
-              {selectedPredicted ? (
-                <p className="text-[12.5px] leading-relaxed text-muted">
-                  Periodo previsto: è una stima basata sul tuo storico.
-                </p>
-              ) : null}
-              {selectedInWindow && !selectedPredicted ? (
-                <p className="text-[12.5px] leading-relaxed text-muted">
-                  Finestra probabile del prossimo ciclo: è una stima.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {selectedLog ? (
-            <div className="flex flex-col gap-6">
+        ) : null}
+        {fertile ? (
+          <div>
+            <p>Finestra fertile stimata</p>
+            <p className="display-sm">
+              {formatRange(fertile.start, fertile.end)}
+            </p>
+          </div>
+        ) : null}
+        {ovulation ? (
+          <div>
+            <p>Ovulazione stimata</p>
+            <p className="display-sm">
+              {formatRange(ovulation.start, ovulation.end)}
+            </p>
+          </div>
+        ) : null}
+        {!prediction ? (
+          <p className="text-sm text-muted">{stats.estimateNote}</p>
+        ) : null}
+      </div>
+      <section
+        ref={detailRef}
+        className="calendar-detail-region mt-5"
+        aria-label="Dettaglio giorno"
+        aria-live="polite"
+      >
+        <Card className="calendar-detail">
+          <h2 className="display-sm text-[22px]">
+            {formatWithWeekday(selected)}{" "}
+            <span className="text-sm text-muted">{selected.slice(0, 4)}</span>
+          </h2>
+          <div className="mt-2 flex flex-wrap gap-2 text-[13px] text-muted">
+            {cycleDay ? <span>Giorno {cycleDay} del ciclo</span> : null}
+            {selectedFertile ? (
+              <span className="text-sage">Finestra fertile stimata</span>
+            ) : null}
+            {selectedPredicted ? (
+              <span className="text-rose-deep">
+                Possibile inizio delle mestruazioni
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-5 space-y-4">
+            {selectedLog ? (
               <LogSummary log={selectedLog} />
-              {episode ? (
-                <p className="text-sm text-muted">
+            ) : (
+              <p className="text-sm text-muted">
+                {isFuture
+                  ? "Giorno futuro: puoi consultare le stime, ma non registrare in anticipo."
+                  : "Nessuna registrazione."}
+              </p>
+            )}
+            {episode && episode.status !== "complete" ? (
+              <details className="text-[13px] text-muted">
+                <summary className="min-h-11 py-2">
+                  Durata delle mestruazioni
+                </summary>
+                <p>
                   {episode.status === "ongoing"
-                    ? "Episodio ancora aperto: la durata non entra nella media. Quando il flusso termina, registra Nessuno il giorno successivo."
-                    : episode.status === "incomplete"
-                      ? "Episodio con fine non confermata o giornate mancanti: non entra nella durata media. Puoi completarlo se ricordi i giorni."
-                      : "Episodio completato con una fine registrata."}
+                    ? "Episodio ancora aperto: la durata non entra nella media."
+                    : "Fine non confermata o giornate mancanti: questo episodio non entra nella durata media."}
                 </p>
-              ) : null}
-              {isFuture ? (
-                <p className="text-[12px] leading-relaxed text-muted">
-                  Giorno futuro: la registrazione è in sola lettura.
-                </p>
-              ) : (
-                <GhostButton
-                  className="w-full"
-                  onClick={() => onRegister(selected)}
-                >
+              </details>
+            ) : null}
+            {!isFuture ? (
+              selectedLog ? (
+                <GhostButton onClick={() => onRegister(selected)}>
                   Modifica
                 </GhostButton>
-              )}
-            </div>
-          ) : isFuture ? (
-            <p className="text-[14px] leading-relaxed text-muted">
-              {selectedPredicted
-                ? "Qui il ciclo è previsto, ma è solo una stima."
-                : selectedInWindow
-                  ? "Da qui potrebbe iniziare il prossimo ciclo: è una stima."
-                  : "Non puoi registrare un giorno futuro."}
-            </p>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <p className="text-[14px] leading-relaxed text-muted">
-                Nessuna registrazione per questo giorno.
-              </p>
-              <PrimaryButton onClick={() => onRegister(selected)}>
-                Registra questo giorno
-              </PrimaryButton>
-            </div>
-          )}
+              ) : (
+                <PrimaryButton onClick={() => onRegister(selected)}>
+                  Registra questo giorno
+                </PrimaryButton>
+              )
+            ) : null}
+          </div>
         </Card>
       </section>
-
-      <p className="apple-note mt-8">
-        Le fasce previste sono intervalli stimati, non giorni confermati. Le
-        stime di ovulazione non sono un metodo contraccettivo.
+      <p className="mt-5 text-center text-[12px] leading-relaxed text-muted">
+        Le date sono stime del ciclo corrente. La finestra fertile non è un
+        metodo contraccettivo.
       </p>
     </Screen>
-  );
-}
-
-function Legend({ swatch, label }: { swatch: ReactNode; label: string }) {
-  return (
-    <span className="flex items-center gap-2 text-[11px] leading-tight text-muted">
-      {swatch}
-      {label}
-    </span>
   );
 }

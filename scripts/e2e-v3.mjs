@@ -62,7 +62,7 @@ const tab = async (p, name) => {
 const save = async (p) => {
   await tab(p, "Salva giornata");
   await p.getByRole("status").filter({ hasText: "Giornata salvata" }).waitFor();
-  await p.getByRole("heading", { name: "Il tuo ciclo, con calma" }).waitFor();
+  await p.getByRole("heading", { name: "Oggi", exact: true }).waitFor();
 };
 try {
   for (const width of [320, 375, 390, 430, 1440]) {
@@ -176,7 +176,7 @@ try {
       ),
     });
     await tab(p, "Importa mantenendo i dati locali");
-    await p.getByRole("heading", { name: "Il tuo ciclo, con calma" }).waitFor();
+    await p.getByRole("heading", { name: "Oggi", exact: true }).waitFor();
     const stored = await p.evaluate(() =>
       JSON.parse(localStorage.getItem("cycle.v1")),
     );
@@ -312,7 +312,7 @@ try {
       original,
     );
     await p.goto(base);
-    await p.getByRole("heading", { name: "Il tuo ciclo, con calma" }).waitFor();
+    await p.getByRole("heading", { name: "Oggi", exact: true }).waitFor();
     check(
       (await p.evaluate(() => localStorage.getItem("cycle.v1"))) === original,
       "legacy payload untouched at hydration",
@@ -354,7 +354,7 @@ try {
         .backupConflicts[today][0].energy === 4,
       "multi-tab alternative retained",
     );
-    await p.getByRole("heading", { name: "Il tuo ciclo, con calma" }).waitFor();
+    await p.getByRole("heading", { name: "Oggi", exact: true }).waitFor();
     await tab(q, "Calendario");
     const yesterdayDate = new Date(today + "T12:00:00");
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);

@@ -33,3 +33,12 @@
 - No probabilistic or medical calibration is claimed for calendar estimates.
 - Historical ambiguous episodes stay ambiguous until the person supplies missing observations.
 - Source deletion does not erase previous Git commits, historical deployments or assets already downloaded by other devices. The new service worker retires old Cycle caches on activation.
+
+## Mobile calendar correction
+
+- Fertile window and estimated dates visible by default; intimate activity remains optional.
+- Month navigation keeps the selected date inside the visible month, clamping shorter months safely.
+- Touch selection reveals the selected day's detail; today's shortcut restores month and selection together.
+- Dedicated grid spacing and touch targets at 320/375/390/430 px; scrolling page background replaces fixed painting.
+- Home and onboarding slogan removed. No changes to persisted data or prediction rules.
+- 56 mobile assertions pass in Chromium and 56 in WebKit, including leap February; 107 existing V3 browser assertions also pass.

@@ -12,9 +12,6 @@ function Wordmark() {
       <h1 className="display text-[46px] leading-none tracking-[-0.03em]">
         Cycle
       </h1>
-      <p className="mt-3 text-[15px] italic text-rose-deep">
-        Il tuo ciclo, con calma
-      </p>
     </div>
   );
 }

@@ -36,7 +36,11 @@
   --line-light: #f4ece3;
 
   --grad-hero:
-    radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.85) 0%, transparent 55%),
+    radial-gradient(
+      120% 90% at 12% 0%,
+      rgba(255, 255, 255, 0.85) 0%,
+      transparent 55%
+    ),
     linear-gradient(155deg, #fffaf2 0%, #f8e9e4 46%, #f2dcc9 100%);
   --grad-primary: linear-gradient(135deg, #3a1a2c 0%, #2c1422 100%);
   --grad-selected: linear-gradient(150deg, #3a1a2c 0%, #58293f 100%);
@@ -44,16 +48,15 @@
   --grad-insight-rose: linear-gradient(160deg, #fdf6f2 0%, #f7e6e4 100%);
 
   --stack-body: "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --stack-serif: "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --stack-serif:
+    "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
 
   --radius-card: 16px;
   --radius-field: 14px;
   --shadow-card:
-    0 2px 3px rgba(74, 38, 54, 0.04),
-    0 18px 36px -26px rgba(74, 38, 54, 0.42);
+    0 2px 3px rgba(74, 38, 54, 0.04), 0 18px 36px -26px rgba(74, 38, 54, 0.42);
   --shadow-hero:
-    0 2px 3px rgba(74, 38, 54, 0.03),
-    0 30px 60px -42px rgba(74, 38, 54, 0.6);
+    0 2px 3px rgba(74, 38, 54, 0.03), 0 30px 60px -42px rgba(74, 38, 54, 0.6);
 }
 
 @theme inline {
@@ -90,10 +93,23 @@ html {
 
 body {
   background:
-    radial-gradient(110% 70% at 100% -8%, rgba(245, 226, 230, 0.6) 0%, transparent 55%),
-    radial-gradient(90% 55% at -12% 100%, rgba(233, 235, 223, 0.55) 0%, transparent 60%),
-    linear-gradient(180deg, var(--soft-light) 0%, var(--bg) 40%, var(--bg-deep) 100%);
-  background-attachment: fixed;
+    radial-gradient(
+      110% 70% at 100% -8%,
+      rgba(245, 226, 230, 0.6) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      90% 55% at -12% 100%,
+      rgba(233, 235, 223, 0.55) 0%,
+      transparent 60%
+    ),
+    linear-gradient(
+      180deg,
+      var(--soft-light) 0%,
+      var(--bg) 40%,
+      var(--bg-deep) 100%
+    );
+  background-attachment: scroll;
   color: var(--plum);
   font-family: var(--stack-body);
   min-height: 100svh;
@@ -418,7 +434,11 @@ textarea {
 }
 
 .nav-item[data-active="true"] .nav-icon {
-  background: linear-gradient(140deg, var(--rose-soft) 0%, var(--peach-soft) 100%);
+  background: linear-gradient(
+    140deg,
+    var(--rose-soft) 0%,
+    var(--peach-soft) 100%
+  );
   color: var(--rose-deep);
 }
 
@@ -481,4 +501,186 @@ input[type="date"] {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Calendar owns its spacing so utility ordering cannot shrink the date grid. */
+.calendar-screen {
+  padding-inline: 16px;
+}
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.calendar-header h1 {
+  min-width: 0;
+}
+.calendar-month-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--soft);
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+.calendar-shell {
+  padding: 12px;
+}
+.calendar-weekdays,
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+.calendar-weekdays {
+  padding-block: 4px 10px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.calendar-days {
+  row-gap: 4px;
+}
+.calendar-day {
+  position: relative;
+  width: 100%;
+  max-width: 44px;
+  min-height: 44px;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: var(--plum);
+  background: transparent;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.calendar-day[data-fertile] {
+  background: var(--sage-soft);
+}
+.calendar-day[data-predicted] {
+  background: var(--peach-soft);
+  border: 1px dashed var(--rose-deep);
+}
+.calendar-day[data-period] {
+  background: var(--rose-soft);
+}
+.calendar-day[data-today] {
+  border: 1.5px solid var(--rose-deep);
+  font-weight: 600;
+}
+.calendar-day[data-selected] {
+  color: var(--surface);
+  background: var(--plum);
+  border-color: var(--plum);
+}
+.calendar-day[data-today][data-selected] {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+.calendar-ovulation-dot {
+  position: absolute;
+  top: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--sage);
+}
+.calendar-day[data-selected] .calendar-ovulation-dot {
+  background: var(--sage-soft);
+}
+.calendar-day-marks {
+  position: absolute;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 10px;
+  color: var(--rose-deep);
+}
+.calendar-day[data-selected] .calendar-day-marks {
+  color: var(--rose-soft);
+}
+.calendar-log-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  border-top: 1px solid var(--line-light);
+  margin-top: 14px;
+  padding-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.calendar-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.calendar-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.calendar-legend-prediction {
+  background: var(--peach-soft);
+  border: 1px dashed var(--rose-deep);
+}
+.calendar-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.calendar-toolbar input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--plum);
+}
+.calendar-dates {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.calendar-dates > div {
+  border-left: 3px solid var(--line);
+  padding-left: 12px;
+}
+.calendar-dates > div:last-child {
+  border-color: var(--sage-soft);
+}
+.calendar-dates p:first-child {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.calendar-dates .display-sm {
+  font-size: 17px;
+}
+.calendar-detail {
+  padding: 20px;
+}
+
+.calendar-detail-region {
+  scroll-margin-top: 16px;
+  scroll-margin-bottom: calc(90px + env(safe-area-inset-bottom));
 }

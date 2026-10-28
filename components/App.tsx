@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { TabId } from "@/types";
 import { useStore } from "@/lib/store";
-import { diffDays } from "@/lib/dates";
+import { diffDays, daysInMonth } from "@/lib/dates";
 import { BottomNav } from "./BottomNav";
 import { CalendarView } from "./CalendarView";
 import { InsightsView } from "./InsightsView";
@@ -148,7 +148,16 @@ export function App() {
         <CalendarView
           month={calendarMonth}
           selected={calendarDay}
-          onMonthChange={setMonthOverride}
+          onMonthChange={(month) => {
+            setMonthOverride(month);
+            const day = Math.min(
+              Number(calendarDay.slice(-2)),
+              daysInMonth(month),
+            );
+            setCalendarDay(
+              `${month.slice(0, 7)}-${String(day).padStart(2, "0")}`,
+            );
+          }}
           onSelect={setCalendarDay}
           onRegister={(date) => openLog(date, "calendario")}
         />

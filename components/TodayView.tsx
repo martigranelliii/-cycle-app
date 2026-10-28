@@ -40,8 +40,9 @@ export function TodayView({
   return (
     <Screen className="pb-28">
       <section className="hero px-5 pb-5 pt-5">
-        <h1 className="display text-2xl">Il tuo ciclo, con calma</h1>
-        <p className="mt-2 text-sm text-muted">{formatWithWeekday(today)}</p>
+        <h1 aria-label="Oggi" className="label-xs">
+          {formatWithWeekday(today)}
+        </h1>
         {stats.currentCycleDay !== null ? (
           <>
             <CycleProgress
@@ -57,7 +58,7 @@ export function TodayView({
           <p className="my-6 text-sm">
             {stats.hasPeriodData
               ? "L’ultimo inizio registrato è lontano. Aggiorna il diario per ritrovare il punto."
-              : "Segna un inizio delle mestruazioni quando lo conosci. Puoi usare il diario anche senza stime."}
+              : "Registra le mestruazioni per vedere il giorno del ciclo."}
           </p>
         )}
         <div className="mt-4 border-t border-line pt-4">
@@ -81,7 +82,7 @@ export function TodayView({
         </div>
       </section>
       <section className="mt-6">
-        <h2 className="display-sm mb-3 text-xl">Un momento per oggi</h2>
+        <h2 className="display-sm mb-3 text-xl">Come stai oggi?</h2>
         <Card>
           {log ? (
             <div className="mb-4">
