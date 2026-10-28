@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { cycleDayFor } from "@/lib/cycle";
+import { getCycleDayState } from "@/lib/cycle";
 import {
   WEEKDAYS,
   formatLong,
@@ -35,23 +35,16 @@ export function CalendarView({
   const [showActivity, setShowActivity] = useState(false);
   const detailRef = useRef<HTMLElement>(null);
   const weeks = useMemo(() => monthWeeks(month), [month]);
-  const periodSet = useMemo(
-    () => new Set(stats.periodDays),
-    [stats.periodDays],
-  );
   const prediction = stats.prediction;
   const fertile = stats.fertileWindow;
   const ovulation = stats.ovulation;
-  const inside = (day: string, range: { start: string; end: string } | null) =>
-    Boolean(range && day >= range.start && day <= range.end);
   const selectedLog = data.logs[selected];
   const isFuture = selected > today;
-  const cycleDay = isFuture ? null : cycleDayFor(selected, stats);
+  const selectedState = getCycleDayState(selected, stats, data.logs);
+  const cycleDay = selectedState.cycleDay;
   const episode = stats.periods.find(
     (p) => selected >= p.start && selected <= p.end,
   );
-  const selectedFertile = inside(selected, fertile);
-  const selectedPredicted = inside(selected, prediction);
   return (
     <Screen className="calendar-screen pb-28">
       <header className="calendar-header">
@@ -90,16 +83,23 @@ export function CalendarView({
         >
           {weeks.flat().map((day, i) => {
             if (!day) return <span key={`empty-${i}`} aria-hidden />;
-            const period = periodSet.has(day);
-            const predicted = !period && inside(day, prediction);
-            const isFertile = !period && inside(day, fertile);
-            const isOvulation = ovulation?.expected === day;
-            const hasLog = Boolean(data.logs[day]);
+            const state = getCycleDayState(day, stats, data.logs);
+            const period = state.kind === "menstruation-recorded";
+            const estimatedPeriod =
+              state.kind === "menstruation-estimated" &&
+              state.estimate === "current-period";
+            const predicted =
+              state.kind === "menstruation-estimated" &&
+              state.estimate === "next-start";
+            const isOvulation = state.kind === "ovulation-estimated";
+            const isFertile = state.kind === "fertile-estimated" || isOvulation;
+            const hasLog = day <= today && Boolean(data.logs[day]);
             const activity =
               showActivity && hasSexualActivity(data.logs[day]?.sexualActivity);
             const label = [
               formatLong(day),
               period ? "mestruazioni registrate" : "",
+              estimatedPeriod ? "mestruazioni previste" : "",
               predicted ? "inizio mestruazioni stimato" : "",
               isFertile ? "finestra fertile stimata" : "",
               isOvulation ? "ovulazione stimata" : "",
@@ -114,7 +114,10 @@ export function CalendarView({
                 key={day}
                 data-date={day}
                 className="calendar-day"
+                data-cycle-state={state.kind}
+                data-source={state.source}
                 data-period={period || undefined}
+                data-estimated-period={estimatedPeriod || undefined}
                 data-predicted={predicted || undefined}
                 data-fertile={isFertile || undefined}
                 data-selected={selected === day || undefined}
@@ -149,7 +152,15 @@ export function CalendarView({
         <div className="calendar-legend">
           <span>
             <i className="bg-rose-soft" />
-            Mestruazioni
+            Mestruazioni registrate
+          </span>
+          <span>
+            <i className="calendar-legend-period-estimate" />
+            Mestruazioni previste
+          </span>
+          <span>
+            <i className="calendar-legend-ovulation" />
+            Ovulazione stimata
           </span>
           <span>
             <i className="bg-sage-soft" />
@@ -218,6 +229,8 @@ export function CalendarView({
         className="calendar-detail-region mt-5"
         aria-label="Dettaglio giorno"
         aria-live="polite"
+        data-cycle-state={selectedState.kind}
+        data-source={selectedState.source}
       >
         <Card className="calendar-detail">
           <h2 className="display-sm text-[22px]">
@@ -226,13 +239,22 @@ export function CalendarView({
           </h2>
           <div className="mt-2 flex flex-wrap gap-2 text-[13px] text-muted">
             {cycleDay ? <span>Giorno {cycleDay} del ciclo</span> : null}
-            {selectedFertile ? (
-              <span className="text-sage">Finestra fertile stimata</span>
-            ) : null}
-            {selectedPredicted ? (
-              <span className="text-rose-deep">
-                Possibile inizio delle mestruazioni
+            {selectedState.kind !== "unknown" ? (
+              <span
+                className={
+                  selectedState.source === "recorded"
+                    ? "text-rose-deep"
+                    : "text-muted"
+                }
+              >
+                {selectedState.label}
               </span>
+            ) : null}
+            {selectedState.source === "recorded" ? (
+              <span>Flusso registrato</span>
+            ) : null}
+            {selectedState.kind === "menstruation-estimated" ? (
+              <span>Stima, non registrazione</span>
             ) : null}
           </div>
           <div className="mt-5 space-y-4">

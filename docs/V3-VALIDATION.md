@@ -13,14 +13,14 @@
 
 - Ongoing or ambiguous menstrual episodes do not enter the duration average.
 - A completed episode requires contiguous observed flow and an explicit no-flow day immediately after it.
-- Sparse history, excluded intervals, long absences and high variability suspend predictions.
+- Sparse history, long absences and high variability suspend predictions. Excluded intervals are disclosed; usable prior intervals can support a new estimate anchored to a newly recorded start.
 - No multi-cycle fixed-duration period projections. Optional ovulation/fertile intervals carry uncertainty and are not contraception.
 - Pattern comparisons use the same signal on both sides, disjoint energy samples, fixed windows and repeated evidence across cycles.
 - Missing data, adequate data without a pattern, and supported observations have distinct UI states.
 
 ## Verification
 
-- 58 unit/regression tests: storage, legacy observations, corruption, backup/conflicts, episodes, predictions, insights and wellness.
+- 72 unit/regression tests: storage, legacy observations, corruption, backup/conflicts, episodes, predictions, insights and wellness.
 - 107 browser assertions: 320/375/390/430/1440 px, onboarding, restore/export, draft navigation, check-in, focus, settings, offline, refresh, legacy hydration, write failures, multi-tab and insight evidence navigation.
 - No JavaScript errors or external application requests in the local browser suite.
 - Typecheck, ESLint and production Webpack build pass. PostCSS configuration follows the installed Next.js documentation; Webpack avoids the environment's Turbopack port-binding failure.
@@ -42,3 +42,13 @@
 - Dedicated grid spacing and touch targets at 320/375/390/430 px; scrolling page background replaces fixed painting.
 - Home and onboarding slogan removed. No changes to persisted data or prediction rules.
 - 56 mobile assertions pass in Chromium and 56 in WebKit, including leap February; 107 existing V3 browser assertions also pass.
+
+## Observed flow precedence regression
+
+- `getCycleDayState` is the shared source for Home, Calendar, Insights and `stats.phase`.
+- Recorded `recorded/light/medium/heavy` flow wins over every estimate; spotting alone never starts a cycle.
+- Ongoing duration projections remain in memory only and have explicit estimated provenance; no synthetic daily logs are saved.
+- Fertile/ovulation intervals cannot overlap the current menstrual duration. Inconsistent interval assumptions withhold the estimate.
+- Closed episodes require an observed no-flow day; future imported answers cannot prematurely close today's episode.
+- Fourteen dedicated engine regressions cover A–H, early/late starts, prolonged observed flow, explicit endings and legacy v1 data.
+- A real-date isolated browser reproduction verifies fertile → save flow → menstruation/day 1, ring reset, future dates, mean duration, agreement between screens and refresh.

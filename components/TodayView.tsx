@@ -23,6 +23,7 @@ export function TodayView({
   const [more, setMore] = useState(false);
   const log = data.logs[today];
   const p = stats.prediction;
+  const current = stats.currentState;
   const wellness = getDailyWellnessSuggestions({
     phase: stats.phase,
     cycleDay: stats.currentCycleDay,
@@ -43,6 +44,27 @@ export function TodayView({
         <h1 aria-label="Oggi" className="label-xs">
           {formatWithWeekday(today)}
         </h1>
+        <div
+          className="mt-4 text-center"
+          aria-label="Stato attuale del ciclo"
+          aria-live="polite"
+          data-cycle-state={current.kind}
+          data-source={current.source}
+        >
+          {current.kind !== "unknown" ? (
+            <h2 className="display-sm text-[23px]">{current.label}</h2>
+          ) : null}
+          {current.source === "recorded" ? (
+            <p className="mt-1 text-[13px] text-rose-deep">
+              Flusso registrato oggi
+            </p>
+          ) : null}
+          {current.kind === "menstruation-estimated" ? (
+            <p className="mt-1 text-[13px] text-muted">
+              Stima dalla durata abituale, non flusso registrato
+            </p>
+          ) : null}
+        </div>
         {stats.currentCycleDay !== null ? (
           <>
             <CycleProgress
@@ -53,6 +75,18 @@ export function TodayView({
               Dall’ultimo inizio segnalato, il{" "}
               {formatDayMonth(stats.currentCycleStart!)}.
             </p>
+            {current.phase === "mestruale" ? (
+              <p className="mt-2 text-center text-[13px] text-muted">
+                {stats.periodLengthIsEstimate
+                  ? "Riferimento iniziale"
+                  : "Durata abituale"}
+                : circa {stats.averagePeriodLength} giorni
+                {stats.periodLengthIsEstimate
+                  ? "; mancano episodi completati"
+                  : ""}
+                .
+              </p>
+            ) : null}
           </>
         ) : (
           <p className="my-6 text-sm">
@@ -116,11 +150,9 @@ export function TodayView({
         </button>
         {more ? (
           <div className="mt-4 space-y-4">
-            {stats.ovulation ? (
+            {stats.ovulation && stats.ovulation.end >= today ? (
               <Card>
-                <h2 className="display-sm text-xl">
-                  Ovulazione: intervallo stimato
-                </h2>
+                <h2 className="display-sm text-xl">Ovulazione stimata</h2>
                 <p className="mt-2 text-sm">
                   {formatRange(stats.ovulation.start, stats.ovulation.end)}
                 </p>
@@ -128,6 +160,16 @@ export function TodayView({
                   Stima ricavata dal calendario, senza conferma dell’ovulazione.
                   Non è un metodo contraccettivo.
                 </p>
+                {stats.fertileWindow && stats.fertileWindow.end >= today ? (
+                  <p className="mt-3 text-sm">
+                    Finestra fertile stimata{" "}
+                    {formatRange(
+                      stats.fertileWindow.start,
+                      stats.fertileWindow.end,
+                    )}
+                    .
+                  </p>
+                ) : null}
                 {stats.latestPositiveLhTest ? (
                   <p className="mt-2 text-sm">
                     Test LH positivo registrato il{" "}

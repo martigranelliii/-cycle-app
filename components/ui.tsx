@@ -217,6 +217,12 @@ export function CycleProgress({
   return (
     <div
       className="ring-in relative mx-auto"
+      role="img"
+      aria-label={
+        day === null
+          ? "Nessun giorno del ciclo disponibile"
+          : `Giorno ${day} del ciclo`
+      }
       style={{ width: SIZE, height: SIZE }}
     >
       <div

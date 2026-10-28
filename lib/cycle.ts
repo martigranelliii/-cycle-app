@@ -1,4 +1,4 @@
-import type { DailyLog, PhaseId } from "@/types";
+import type { DailyLog, PhaseId, PeriodFlow } from "@/types";
 import { addDays, diffDays, formatDayMonth, isValidKey } from "./dates";
 
 /**
@@ -91,7 +91,50 @@ export interface PredictionWindow {
   basis: "recent" | "initial";
 }
 
+export type CycleDayKind =
+  | "menstruation-recorded"
+  | "menstruation-estimated"
+  | "fertile-estimated"
+  | "ovulation-estimated"
+  | "follicular-estimated"
+  | "luteal-estimated"
+  | "unknown";
+
+export interface CycleDayState {
+  kind: CycleDayKind;
+  label: string;
+  source: "recorded" | "estimated" | "unknown";
+  basis: "recorded" | "history" | "initial" | "unknown";
+  cycleDay: number | null;
+  phase: PhaseId | null;
+  estimate: "current-period" | "next-start" | null;
+}
+
+const UNKNOWN_DAY: CycleDayState = {
+  kind: "unknown",
+  label: "Stato del ciclo non disponibile",
+  source: "unknown",
+  basis: "unknown",
+  cycleDay: null,
+  phase: null,
+  estimate: null,
+};
+
+/** Only these existing v1 values represent an observed menstrual flow. */
+export function isMenstrualFlow(flow: PeriodFlow | undefined): boolean {
+  return (
+    flow === "recorded" ||
+    flow === "light" ||
+    flow === "medium" ||
+    flow === "heavy"
+  );
+}
+
 export interface CycleStats {
+  today: string;
+  currentState: CycleDayState;
+  /** Expected duration from the current observed/reported start, never saved flow. */
+  currentPeriodWindow: PredictedWindow | null;
   /** Periods built from recorded days, oldest first. */
   periods: CyclePeriod[];
   /** All known cycle start dates, oldest first. */
@@ -152,6 +195,9 @@ export interface CycleInput {
 
 /** Safe default used before the client knows the current date. */
 export const EMPTY_STATS: CycleStats = {
+  today: "",
+  currentState: UNKNOWN_DAY,
+  currentPeriodWindow: null,
   periods: [],
   cycleStarts: [],
   cycleLengths: [],
@@ -263,13 +309,9 @@ export function estimatePhase(
 }
 
 /**
- * Single source of truth for the displayed estimated fertile window.
- *
- * Given the central estimated ovulation day it returns the app's convention:
- * 5 calendar days before, the day itself and 2 calendar days after (8 days,
- * both boundaries inclusive). Oggi, Calendario and Insights all consume this,
- * so they can never disagree about which dates belong to the window. It is an
- * estimate and must never be used as contraceptive guidance.
+ * Point-estimate helper retained for compatibility. computeCycle carries
+ * uncertainty and clips its ranges against the current menstrual episode;
+ * screens resolve the actual day state through getCycleDayState.
  */
 export function getEstimatedFertileWindow(estimatedOvulationDay: string): {
   start: string;
@@ -284,14 +326,18 @@ export function getEstimatedFertileWindow(estimatedOvulationDay: string): {
 }
 
 /** Group logged period days, tolerating a single skipped day in between. */
-function groupDays(days: string[]): string[][] {
+function groupDays(days: string[], logs: Record<string, DailyLog>): string[][] {
   const sorted = [...days].sort();
   const groups: string[][] = [];
 
   for (const day of sorted) {
     const current = groups[groups.length - 1];
     const previous = current?.[current.length - 1];
-    if (current && previous && diffDays(day, previous) <= 2) {
+    const closedBetween =
+      previous &&
+      logs[addDays(previous, 1)]?.flowRecorded === true &&
+      logs[addDays(previous, 1)]?.periodFlow === "none";
+    if (current && previous && diffDays(day, previous) <= 2 && !closedBetween) {
       current.push(day);
     } else {
       groups.push([day]);
@@ -307,27 +353,30 @@ export function computeCycle(input: CycleInput): CycleStats {
   const fallbackPeriod = input.averagePeriodLength ?? 5;
 
   const periodDays = Object.values(input.logs)
-    .filter((log) => log.periodFlow !== "none")
+    .filter((log) => isMenstrualFlow(log.periodFlow))
     .map((log) => log.date)
     .filter((date) => isValidKey(date) && date <= today);
 
-  const periods: CyclePeriod[] = groupDays(periodDays).map((group) => {
-    const start = group[0];
-    const end = group[group.length - 1];
-    return {
-      start,
-      end,
-      length: diffDays(end, start) + 1,
-      source: "log" as const,
-      status: (group.length === diffDays(end, start) + 1 &&
-      input.logs[addDays(end, 1)]?.flowRecorded === true &&
-      input.logs[addDays(end, 1)]?.periodFlow === "none"
-        ? "complete"
-        : diffDays(today, end) <= 1
-          ? "ongoing"
-          : "incomplete") as CyclePeriod["status"],
-    };
-  });
+  const periods: CyclePeriod[] = groupDays(periodDays, input.logs).map(
+    (group) => {
+      const start = group[0];
+      const end = group[group.length - 1];
+      return {
+        start,
+        end,
+        length: diffDays(end, start) + 1,
+        source: "log" as const,
+        status: (addDays(end, 1) <= today &&
+        group.length === diffDays(end, start) + 1 &&
+        input.logs[addDays(end, 1)]?.flowRecorded === true &&
+        input.logs[addDays(end, 1)]?.periodFlow === "none"
+          ? "complete"
+          : diffDays(today, end) <= 1
+            ? "ongoing"
+            : "incomplete") as CyclePeriod["status"],
+      };
+    },
+  );
 
   const cycleStarts = new Set(periods.map((period) => period.start));
 
@@ -337,7 +386,10 @@ export function computeCycle(input: CycleInput): CycleStats {
     // couple of days of) a logged start. A start reported a week or more away
     // is a separate period the person knows about and must not be swallowed.
     const alreadyTracked = periods.some(
-      (period) => Math.abs(diffDays(input.lastPeriodStart!, period.start)) <= 3,
+      (period) =>
+        (input.lastPeriodStart! >= period.start &&
+          input.lastPeriodStart! <= period.end) ||
+        Math.abs(diffDays(input.lastPeriodStart!, period.start)) <= 3,
     );
     if (!alreadyTracked) {
       reportedStart = input.lastPeriodStart;
@@ -379,7 +431,7 @@ export function computeCycle(input: CycleInput): CycleStats {
           recentCycleLengths.map((length) => Math.abs(length - recentAverage)),
         )
       : 0;
-  const confidence = confidenceFor(
+  let confidence = confidenceFor(
     recentCycleLengths.length,
     cycleLengthVariability,
   );
@@ -389,11 +441,51 @@ export function computeCycle(input: CycleInput): CycleStats {
     starts.length - 1 - cycleLengths.length,
   );
   const currentCycleStart = starts.length ? starts[starts.length - 1] : null;
+  const lastInterval =
+    starts.length >= 2
+      ? diffDays(starts[starts.length - 1], starts[starts.length - 2])
+      : null;
+  if (
+    lastInterval !== null &&
+    (lastInterval < PLAUSIBLE_CYCLE.min || lastInterval > PLAUSIBLE_CYCLE.max)
+  ) {
+    confidence = {
+      level: "low",
+      label: "Bassa",
+      note: "L’ultimo intervallo è atipico o incompleto: la stima usa soltanto i cicli utilizzabili.",
+    };
+  }
+  const currentEpisode = periods.find(
+    (period) => period.start === currentCycleStart,
+  );
+  let currentPeriodWindow: PredictedWindow | null = null;
+  if (currentCycleStart) {
+    let end = addDays(currentCycleStart, averagePeriodLength - 1);
+    if (currentEpisode && currentEpisode.end > end) end = currentEpisode.end;
+    const firstNoFlow = Object.values(input.logs)
+      .filter(
+        (log) =>
+          log.date >= currentCycleStart &&
+          log.date <= today &&
+          log.date <= end &&
+          log.flowRecorded === true &&
+          log.periodFlow === "none",
+      )
+      .map((log) => log.date)
+      .sort()[0];
+    if (firstNoFlow) end = addDays(firstNoFlow, -1);
+    if (end >= currentCycleStart)
+      currentPeriodWindow = { start: currentCycleStart, end };
+  }
 
   let currentCycleDay: number | null = null;
   if (currentCycleStart) {
     const day = diffDays(today, currentCycleStart) + 1;
-    if (day >= 1 && day <= Math.min(90, averageCycleLength + 14))
+    if (
+      day >= 1 &&
+      (isMenstrualFlow(input.logs[today]?.periodFlow) ||
+        day <= Math.min(90, averageCycleLength + 14))
+    )
       currentCycleDay = day;
   }
 
@@ -411,8 +503,7 @@ export function computeCycle(input: CycleInput): CycleStats {
     nextPeriodStart &&
     currentCycleDay !== null &&
     recentCycleLengths.length >= 2 &&
-    cycleLengthVariability <= 7 &&
-    excludedIntervals === 0
+    cycleLengthVariability <= 7
   ) {
     const basis: PredictionWindow["basis"] =
       recentCycleLengths.length >= 2 ? "recent" : "initial";
@@ -439,21 +530,46 @@ export function computeCycle(input: CycleInput): CycleStats {
   const ovulationWindows: OvulationWindow[] = [];
   const fertileWindows: FertileWindow[] = [];
 
-  if (prediction) {
+  if (prediction && currentCycleStart) {
     const expectedOvulation = addDays(prediction.expected, -LUTEAL_DAYS);
-    ovulationWindows.push({
-      start: addDays(prediction.start, -OVULATION_EARLY),
-      end: addDays(prediction.end, -OVULATION_LATE),
-      expected: expectedOvulation,
-      periodStart: prediction.expected,
-    });
-    // Carry the whole ovulation interval into this optional calendar layer.
-    fertileWindows.push({
-      start: addDays(ovulationWindows[0].start, -FERTILE_DAYS_BEFORE_OVULATION),
-      end: addDays(ovulationWindows[0].end, FERTILE_DAYS_AFTER_OVULATION),
-      estimatedOvulationDay: expectedOvulation,
-      periodStart: prediction.expected,
-    });
+    // A range must never extend back into this cycle's menstrual episode.
+    const afterMenstruation = currentPeriodWindow
+      ? addDays(currentPeriodWindow.end, 1)
+      : addDays(currentCycleStart, averagePeriodLength);
+    const beforeNextPeriod = addDays(prediction.start, -1);
+    const start = [
+      addDays(prediction.start, -OVULATION_EARLY),
+      afterMenstruation,
+    ]
+      .sort()
+      .at(-1)!;
+    const end = [
+      addDays(prediction.end, -OVULATION_LATE),
+      beforeNextPeriod,
+    ].sort()[0];
+    // If the calendar assumptions conflict, withhold rather than move an ovulation date.
+    if (start <= expectedOvulation && expectedOvulation <= end) {
+      ovulationWindows.push({
+        start,
+        end,
+        expected: expectedOvulation,
+        periodStart: prediction.expected,
+      });
+      fertileWindows.push({
+        start: [
+          addDays(start, -FERTILE_DAYS_BEFORE_OVULATION),
+          afterMenstruation,
+        ]
+          .sort()
+          .at(-1)!,
+        end: [
+          addDays(end, FERTILE_DAYS_AFTER_OVULATION),
+          beforeNextPeriod,
+        ].sort()[0],
+        estimatedOvulationDay: expectedOvulation,
+        periodStart: prediction.expected,
+      });
+    }
   }
 
   const firstOvulation = ovulationWindows[0];
@@ -488,14 +604,17 @@ export function computeCycle(input: CycleInput): CycleStats {
         .pop() ?? null)
     : null;
 
-  return {
+  const stats: CycleStats = {
+    today,
+    currentState: UNKNOWN_DAY,
+    currentPeriodWindow,
     periods,
     cycleStarts: starts,
     cycleLengths,
     cyclesTracked: cycleLengths.length,
     excludedIntervals,
     estimateNote: excludedIntervals
-      ? `${excludedIntervals} intervalli non utilizzati (fuori da 15–60 giorni): controlla gli inizi nel calendario.`
+      ? `${excludedIntervals} intervalli non utilizzati (fuori da 15–60 giorni). Le stime, quando disponibili, usano i cicli utilizzabili e l’ultimo inizio registrato.`
       : currentCycleStart && currentCycleDay === null
         ? "L’ultimo inizio è lontano: aggiorna il diario prima di usare nuove stime."
         : recentCycleLengths.length < 2
@@ -509,14 +628,7 @@ export function computeCycle(input: CycleInput): CycleStats {
     periodLengthIsEstimate: measuredPeriods.length === 0,
     currentCycleStart,
     currentCycleDay,
-    phase:
-      currentCycleDay === null
-        ? null
-        : estimatePhase(
-            currentCycleDay,
-            averageCycleLength,
-            averagePeriodLength,
-          ),
+    phase: null, // Filled exclusively by the shared day-state evaluator below.
     nextPeriodStart,
     prediction,
     confidence,
@@ -536,6 +648,9 @@ export function computeCycle(input: CycleInput): CycleStats {
     reportedStart,
     hasPeriodData: starts.length > 0,
   };
+  stats.currentState = getCycleDayState(today, stats, input.logs);
+  stats.phase = stats.currentState.phase;
+  return stats;
 }
 
 /**
@@ -553,8 +668,103 @@ export function cycleDayFor(date: string, stats: CycleStats): number | null {
   const day = diffDays(date, start) + 1;
   // A large gap means the person simply did not record for a while: say
   // nothing rather than inventing a day number.
-  if (day > stats.averageCycleLength + 14) return null;
+  if (
+    day > Math.min(90, stats.averageCycleLength + 14) &&
+    !stats.periodDays.includes(date)
+  )
+    return null;
   return day;
+}
+
+/**
+ * One precedence rule for Home, Calendar, Insights and derived phase:
+ * observed flow > current menstrual duration > next start estimate > fertile
+ * interval (with ovulation as a more specific estimate) > other estimated phase.
+ * Missing legacy answers are never treated as explicit negative observations.
+ */
+export function getCycleDayState(
+  date: string,
+  stats: CycleStats,
+  logs: Record<string, DailyLog>,
+): CycleDayState {
+  if (!isValidKey(date)) return { ...UNKNOWN_DAY };
+  const cycleDay = cycleDayFor(date, stats);
+  const day = logs[date];
+  const knownDay = date <= stats.today;
+  const make = (
+    kind: CycleDayKind,
+    label: string,
+    phase: PhaseId | null,
+    estimate: CycleDayState["estimate"] = null,
+  ): CycleDayState => ({
+    kind,
+    label,
+    phase,
+    estimate,
+    cycleDay,
+    source:
+      kind === "menstruation-recorded"
+        ? "recorded"
+        : kind === "unknown"
+          ? "unknown"
+          : "estimated",
+    basis:
+      kind === "menstruation-recorded"
+        ? "recorded"
+        : estimate === "current-period"
+          ? stats.periodLengthIsEstimate
+            ? "initial"
+            : "history"
+          : stats.cycleLengthIsEstimate
+            ? "initial"
+            : "history",
+  });
+  if (knownDay && isMenstrualFlow(day?.periodFlow))
+    return make("menstruation-recorded", "Mestruazioni", "mestruale");
+  const noFlow =
+    knownDay && day?.flowRecorded === true && day.periodFlow === "none";
+  const contains = (range: PredictedWindow | null) =>
+    Boolean(range && date >= range.start && date <= range.end);
+  if (!noFlow && contains(stats.currentPeriodWindow))
+    return make(
+      "menstruation-estimated",
+      "Mestruazioni attese",
+      "mestruale",
+      "current-period",
+    );
+  if (!noFlow && contains(stats.prediction))
+    return make(
+      "menstruation-estimated",
+      "Possibile inizio delle mestruazioni",
+      "mestruale",
+      "next-start",
+    );
+  if (stats.ovulation?.expected === date)
+    return make("ovulation-estimated", "Ovulazione stimata", "ovulatoria");
+  if (contains(stats.fertileWindow))
+    return make(
+      "fertile-estimated",
+      "Finestra fertile stimata",
+      stats.ovulation && date < stats.ovulation.expected
+        ? "follicolare"
+        : "luteale",
+    );
+  if (cycleDay === null) return { ...UNKNOWN_DAY };
+  const phase = estimatePhase(
+    cycleDay,
+    stats.averageCycleLength,
+    stats.averagePeriodLength,
+  );
+  // A confirmed end of bleeding wins over the average duration too.
+  if (phase === "follicolare" || phase === "mestruale")
+    return make(
+      "follicular-estimated",
+      "Fase follicolare stimata",
+      "follicolare",
+    );
+  if (phase === "luteale")
+    return make("luteal-estimated", "Fase luteale stimata", "luteale");
+  return { ...UNKNOWN_DAY, cycleDay };
 }
 
 /** Days covered by the expected (not recorded) period windows. */

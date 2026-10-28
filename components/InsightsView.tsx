@@ -73,6 +73,18 @@ export function InsightsView({ onDay }: { onDay: (date: string) => void }) {
         <p className="mt-2 text-sm text-muted">
           Cosa raccontano le tue registrazioni.
         </p>
+        {stats.currentState.kind !== "unknown" ? (
+          <p
+            className="mt-2 text-sm text-plum"
+            aria-label="Stato del ciclo negli andamenti"
+            data-cycle-state={stats.currentState.kind}
+          >
+            {stats.currentState.label}
+            {stats.currentState.cycleDay !== null
+              ? ` · Giorno ${stats.currentState.cycleDay}`
+              : ""}
+          </p>
+        ) : null}
       </header>
       <section>
         <h2 className="display-sm mb-3 text-xl">Cycle ha notato</h2>

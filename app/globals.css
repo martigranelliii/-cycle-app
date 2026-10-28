@@ -684,3 +684,23 @@ input[type="date"] {
   scroll-margin-top: 16px;
   scroll-margin-bottom: calc(90px + env(safe-area-inset-bottom));
 }
+
+/* Inferred menstrual days must never look like observed flow. */
+.calendar-day[data-estimated-period] {
+  background: var(--rose-soft);
+  border: 1px dashed var(--rose-deep);
+}
+.calendar-day[data-estimated-period][data-selected] {
+  background: var(--plum);
+  color: var(--surface);
+}
+.calendar-legend-period-estimate {
+  background: var(--rose-soft);
+  border: 1px dashed var(--rose-deep);
+}
+.calendar-legend-ovulation {
+  background: var(--sage);
+  width: 5px !important;
+  height: 5px !important;
+  margin: 2.5px;
+}
